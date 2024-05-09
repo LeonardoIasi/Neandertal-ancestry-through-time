@@ -1,18 +1,3 @@
-from collections import Counter
-from os import path
-import pandas as pd
-import numpy as np
-
-configfile: "../config/data_EMH_Introgression_Project.yaml"
-configfile: "../config/panels_EMH_Introgression_Project.yaml"
-
-include: "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/Phylogenetic_fragment_analysis/Phylogenetic_fragment_analysysis_fromVCF_geneticMap.snake"
-
-
-CHROMS = [str(i+1) for i in range(22)] + ["X"]
-#Folder_name = '/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map'
-Folder_name = '/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/WEurAsandCeAsSi_with_APX_SGDP_admixfrog0.7_Shared_Map'
-
 
 """ VCF PREPARATION"""
 
@@ -25,19 +10,19 @@ def _prepare_vcf_filter(wc):
 rule intersect_vcf:
     input:
         vcf = _prepare_vcf_filter,
-        bed= "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/polarized/{snpset}.bed"
+        bed= "admixfrogREF/bed/polarized/{snpset}.bed"
     output:
-        vcf = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/VCF_files/NewSGDP_unfiltered/{snpset}/{sample}_intersect.vcf"
+        vcf = "path_to_VCF_files/{snpset}/{sample}_intersect.vcf"
     run:
         s = 'bedtools intersect -a {input.vcf} -header -b {input.bed} > {output.vcf}'
         shell(s)
 
 rule compress_and_index_vcf2:
     input:
-        vcf = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/VCF_files/NewSGDP_unfiltered/{snpset}/{sample}_intersect.vcf"
+        vcf = "path_to_VCF_files/{snpset}/{sample}_intersect.vcf"
     output:
-        vcf = temp("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/VCF_files/NewSGDP_unfiltered/{snpset}/{sample}_intersect.vcf.gz"),
-        vcf_tbi = temp("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/VCF_files/NewSGDP_unfiltered/{snpset}/{sample}_intersect.vcf.gz.tbi")
+        vcf = temp("path_to_VCF_files/{snpset}/{sample}_intersect.vcf.gz"),
+        vcf_tbi = temp("path_to_VCF_files/{snpset}/{sample}_intersect.vcf.gz.tbi")
     run:
         s = "bgzip {input} "
         shell(s)
@@ -47,9 +32,9 @@ rule compress_and_index_vcf2:
 
 rule admixfrog_sample_input_from_VCF:
     input :
-        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
-        vcf = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/VCF_files/NewSGDP_unfiltered/{snpset}/{sample}_intersect.vcf.gz",
-        vcf_tbi = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/VCF_files/NewSGDP_unfiltered/{snpset}/{sample}_intersect.vcf.gz.tbi"
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
+        vcf = "path_to_VCF_files/{snpset}/{sample}_intersect.vcf.gz",
+        vcf_tbi = "path_to_VCF_files/{snpset}/{sample}_intersect.vcf.gz.tbi"
     output:
         csv = "{Folder_name}/samples/length_bin_{length_bin}/{sample}_{snpset}_VCF.in.xz"
     run:
@@ -80,7 +65,7 @@ def _inputfiles_panel_VCF(wc):
 rule run_admixfrog_gtmode_from_VCF:
     input:
         infile = _inputfiles_panel_VCF,
-        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
     params:
         ll_tol = 1e-2,
         freq_f = 3,
@@ -135,7 +120,7 @@ rule assign_call_status:
         rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz",
         res_bin = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz",
         res_snp = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.snp.xz",
-        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
         script_ = "assigne_called_bins_and_rle_SNP_info.R"
     params:
         major_ref = 'AFR',
@@ -160,7 +145,7 @@ rule assign_call_status_all_types:
         rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz",
         res_bin = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz",
         res_snp = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.snp.xz",
-        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
     params:
         major_ref = 'AFR',
         gtmode = True,
@@ -173,7 +158,7 @@ rule assign_call_status_all_types:
 
 rule get_all_called_bins:
     input:
-        bin_ref_file = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/{map}/{snpset}_admixfrog_bins_ref.bin.xz",
+        bin_ref_file = "admixfrogREF/bin_ref/{map}/{snpset}_admixfrog_bins_ref.bin.xz",
         res_bin_call = _inputfiles_bin_call,
         script_ = "combine_all_called_bins.R"
     params:
@@ -205,7 +190,7 @@ def _inputfiles_bin_raw(wc):
 
 rule get_all_raw_bins:
     input:
-        bin_ref_file = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/{map}/{snpset}_admixfrog_bins_ref.bin.xz",
+        bin_ref_file = "admixfrogREF/bin_ref/{map}/{snpset}_admixfrog_bins_ref.bin.xz",
         res_bin_call = _inputfiles_bin_raw,
         script_ = "combine_all_called_bins.R"
     params:
@@ -238,8 +223,7 @@ def _inputfiles_all_alleles(wc):
 rule merge_allele_status:
     input:
         all_alleles = _inputfiles_all_alleles,
-        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
-        #script_ = "merge_allele_states.R"
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
     params:
         deam = False,
         calc_DEN = False
@@ -270,7 +254,7 @@ def _inputfiles_ave_cov(wc):
 
 rule ave_cov:
     input:
-        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
         cov = _inputfiles_ave_cov
     output:
         cov_stats = "{Folder_name}/stats/Sample_coverage_{panel}_length_bin_{length_bin}_{snpset}.cov.txt"
@@ -368,12 +352,11 @@ rule ave_states:
 
 rule get_QC_table:
     input:
-        Meta_table = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/SGDP_sample_info.csv",
+        Meta_table = "path_to_VCF_sample_Meta.txt",
         Contamination_table = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.cont.txt",
         Posterior_Ancestry_estimates_table = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.states_stats.txt",
         Coverage_table = "{Folder_name}/stats/Sample_coverage_{panel}_length_bin_{length_bin}_{snpset}.cov.txt",
         f4_ratios_table = "{Folder_name}/samples/length_bin_{length_bin}/f4r_{panel}_{snpset}_allele_state_long.csv",
-        #script_ = "get_QC_table.R"
     params:
         EMH = False
     output:
@@ -400,7 +383,7 @@ def _inputfiles_callable_genome_ind(wc):
 rule callable_genome_merge:
     input:
         covered_list =  _inputfiles_callable_genome_ind,
-        callable_genome = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_callable_regions_joint_windows20000.bed"
+        callable_genome = "path_to_mask_file_of_callable_genome_given_the_ascertainment"
     output:
         Prop_genome_vallable_stats = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{map}/{states}_{panel}_{bin_size}_{snpset}_{min_cov}.proportion_callable_genome.txt"
     run:

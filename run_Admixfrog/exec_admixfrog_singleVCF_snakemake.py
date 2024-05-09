@@ -1,3 +1,16 @@
+from collections import Counter
+from os import path
+import pandas as pd
+import numpy as np
+
+configfile: "config/data_example.yml"
+configfile: "config/panels_example.yaml"
+
+include: "Phylogenetic_fragment_analysis/Phylogenetic_fragment_analysysis_fromVCF_geneticMap.snake"
+
+
+CHROMS = [str(i+1) for i in range(22)] + ["X"]
+Folder_name = 'Result_Folder'
 """ EXECUTE SNAKEMAKE """
 def exec_admixfrog(wc):
     Admixfrog_parameter = "gtmode"
