@@ -1,0 +1,44 @@
+set:
+    ACov_Run_SP:
+        exclude_samples: [["None"],["OaseNew"],["PM1","Malta","Yana1","Yana2","SalkhitArchAdm","Tianyuan","Kostenki14Shotgun","Ostuni1","Vestonice16","Vestonice13","Vestonice43","SunghirIII","SunghirI","SunghirII","SunghirIV","BK1653"],["BKBB7240","BKF6620","BKCC7335","OaseNew","UstIshim","ZlatyKunShotgun"],["OaseNew","PM1","Malta","Yana1","Yana2","SalkhitArchAdm","Tianyuan","Kostenki14Shotgun","Ostuni1","Vestonice16","Vestonice13","Vestonice43","SunghirIII","SunghirI","SunghirII","SunghirIV","BK1653"]]
+        min_l_ACov : [0.02]
+        weighted : ["yes","no"]
+        Map : ["Shared_Map"]
+        Asc : ["All"]
+        truncation : ["not_truncated","estimated_truncation"]
+    Seg_Run_SP:
+        Asc : ["All"]
+        exclude_samples: [["None"],["OaseNew"],["PM1","Malta","Yana1","Yana2","SalkhitArchAdm","Tianyuan","Kostenki14Shotgun","Ostuni1","Vestonice16","Vestonice13","Vestonice43","SunghirIII","SunghirI","SunghirII","SunghirIV","BK1653"],["BKBB7240","BKF6620","BKCC7335","OaseNew","UstIshim","ZlatyKunShotgun"],["OaseNew","PM1","Malta","Yana1","Yana2","SalkhitArchAdm","Tianyuan","Kostenki14Shotgun","Ostuni1","Vestonice16","Vestonice13","Vestonice43","SunghirIII","SunghirI","SunghirII","SunghirIV","BK1653"]]
+        min_l_Seg : [0.2,0.1,0.05]
+        Map : ["Shared_Map"]  
+        Asc : ["All"] 
+    ACov_Run_EP:
+        exclude_samples:  [["None"],["OaseNew"],["PM1","Malta","Yana1","Yana2","SalkhitArchAdm","Tianyuan","Kostenki14Shotgun","Ostuni1","Vestonice16","Vestonice13","Vestonice43","SunghirIII","SunghirI","SunghirII","SunghirIV","BK1653"],["BKBB7240","BKF6620","BKCC7335","OaseNew","UstIshim","ZlatyKunShotgun"],["OaseNew","PM1","Malta","Yana1","Yana2","SalkhitArchAdm","Tianyuan","Kostenki14Shotgun","Ostuni1","Vestonice16","Vestonice13","Vestonice43","SunghirIII","SunghirI","SunghirII","SunghirIV","BK1653"]]
+        min_l_ACov : [0.02]
+        weighted : ["yes","no"]
+        Map : ["Shared_Map"]
+        Asc : ["All"]
+        truncation : ["not_truncated","estimated_truncation"]
+    ACov_Run_EP_JKchrom:
+        exclude_samples: [["BKBB7240","BKF6620","BKCC7335","OaseNew","UstIshim","ZlatyKunShotgun"]]
+        min_l_ACov : [0.02]
+        weighted : ["yes"]
+        Map : ["Shared_Map"]
+        Asc : ["All"]
+        truncation : ["estimated_truncation"]
+        JKchrom : 23
+    Single_Sample_EP_SP:
+        sample_set: [["BKBB7240","BKF6620","BKCC7335","OaseNew","UstIshim","ZlatyKunShotgun"]]
+        min_l_ACov : [0.02]
+        weighted : ["yes"]
+        Map : ["Shared_Map"]
+        Asc : ["All"]
+        truncation : ["estimated_truncation"]
+    Single_Sample_EP_SP_JKchrom:
+        sample_set: [["BKBB7240","BKF6620","BKCC7335","OaseNew","UstIshim","ZlatyKunShotgun"]]
+        min_l_ACov : [0.02]
+        weighted : ["yes"]
+        Map : ["Shared_Map"]
+        Asc : ["All"]
+        truncation : ["estimated_truncation"]
+        JKchrom : 23
