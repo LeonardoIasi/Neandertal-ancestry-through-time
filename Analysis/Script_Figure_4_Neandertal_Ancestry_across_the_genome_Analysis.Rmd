@@ -1,0 +1,1746 @@
+---
+  title: "Neandertal Ancestry across the genome Analysis"
+output:
+  html_document:
+  keep_md: yes
+pdf_document: default
+---
+  
+  ```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Neandertal Ancestry across the genome Analysis
+
+## Functions
+
+```{r eval=T,echo=F,results='hide'}
+source("~/EMH_Introgression_Project/Introgression_Detection/scripts/Analysis_R_functions.R")
+```
+
+
+## Cutoffs
+
+```{r eval=T,echo=F,results='hide'}
+chrom_ <- c("1" ,"2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" )
+
+cluster_used = "clusterF3D_broad"
+
+
+genetic_map = "Shared_Map"
+
+min_len_present = 0.05
+min_bp_len_present = 0
+min_len_ancient = 0.2
+min_bp_len_ancient = 0
+min_SNP = 0
+min_all_SNP = 0
+penalty = 0.25
+states = c("NEA")
+called_type = as.vector(c("state"))
+```
+
+## Meta Data
+
+```{r eval=T,echo=F,results='hide'}
+THEME <-  theme_bw() + theme(axis.title=element_text(face="bold"))
+
+# folder
+folder_path = "~/EMH_Introgression_Project/Introgression_Detection/Preliminary_Paper_Figures/Shared_Map/"
+
+folder_path_data = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/Preliminary_Paper_Figures_Data/"
+
+folder_path_Sup_Tables = "~/EMH_Introgression_Project/Introgression_Detection/Supplements_Tables/"
+
+
+Joint_Meta <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clusters_using_1240k.csv") %>% 
+  filter(sample_name != "Mota",SuperclusterF3D != "Africa") %>% mutate(sample_name=gsub( "-", ".", sample_name))
+
+cluster_color_broad_all = data.frame(clusterF3D_broad_all = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","North_Africa","postLGM-WEurHG","preLGM-WEurHG","SA","Oceania","Satsurblia","Siberia&Americas" ,"Sub-Sahara-Africa","SWA","WEur","Yamnaya"),
+                                     cluster_color = 
+                                       c("#009292FF","#FFCC00","#6DB6FFFF","#004949FF","#924900FF","#808080","#490092FF","#DB6D00FF","#920000FF","#006DDBFF","#FFB6DBFF","#24FF24FF","#000000FF","#B66DFFFF","#FF6DB6FF","#B6DBFFFF"))
+
+cluster_color_broad = data.frame(clusterF3D_broad = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","postLGM-WEurHG","preLGM-WEurHG","SA","Oceania","Satsurblia","Siberia&Americas" ,"SWA","WEur","Yamnaya"),
+                                 cluster_color = 
+                                   c("#009292FF","#FFCC00","#6DB6FFFF","#004949FF","#924900FF","#490092FF","#DB6D00FF","#920000FF","#006DDBFF","#FFB6DBFF","#24FF24FF","#B66DFFFF","#FF6DB6FF","#B6DBFFFF"))
+
+cluster_color_refined = data.frame(clusterF3D_refined = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","EHG","IUP","preLGM-WEurHG","SA","Oceania","Satsurblia","Siberia&Americas" ,"SWA","WEur","WHG","Yamnaya"),
+                                   cluster_color = c("#009292FF","#6DB6FFFF","#004949FF","#924900FF","#DB6D00FF","#808080","#920000FF","#006DDBFF","#FFB6DBFF","#24FF24FF","#000000FF","#B66DFFFF","#FF6DB6FF","#490092FF","#B6DBFFFF","#FFCC00"))
+
+
+Supercluster_color = data.frame(SuperclusterF3D = c("Americas&Asia","EarlyOoA","Oceania","WEurCAS"),Supercluster_color = c("#924900FF","#004949FF","#006DDBFF","#FF6DB6FF"))
+
+cluster_color = cluster_color_broad
+
+Vernot_sankararaman <- read.csv(paste0(folder_path_data,"Vernot_sankararaman_deserts.csv")) %>% dplyr::rename(annotation = paper)
+Skov_deserts <- read.csv(paste0(folder_path_data,"Laurits_deserts.txt"),sep = "\t") %>% 
+  dplyr::select(chrom,start,end) %>% mutate(annotation = "Skov_2020")
+
+Published_deserts <- rbind(Vernot_sankararaman,Skov_deserts) %>% mutate(chrom = ifelse(chrom == 23,"X",chrom)) %>% 
+  mutate_at(c('chrom'), as.character) %>% transform(.,chrom=factor(chrom, levels=chrom_))
+
+write.csv(Published_deserts,paste0(folder_path_data,"Published_Deserts.csv"),quote = F,row.names = F)
+```
+
+## Reading in Data
+
+```{r eval=T,echo=F,results='hide'}
+
+
+dir_path_EMH <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = "archaicadmixtureAPX.rle0.25.xz.anno_all_types$",full.names = T)
+
+
+dir_path_SGDP <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map//rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = "archaicadmixtureAPX.rle0.25.xz.anno_all_types$",full.names = T)
+
+
+states = c("NEA","DEN")
+EMH_rle_all_unfiltered <- get_rle_files(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = states,chrom_ = chrom_,sep_char = ",") %>%
+  drop_na() 
+
+EMH_rle_all <- EMH_rle_all_unfiltered %>% filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient, n_all_snps >= min_SNP)
+
+
+SGDP_rle_all <- get_rle_files(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("state"),target_ = states,chrom_ = chrom_,sep_char = ",") %>% 
+  filter(map_len >= min_len_present, pos_len >= min_bp_len_present, n_all_snps >= min_SNP) %>%
+  mutate(sample = gsub("-", "\\.", sample))
+
+All_rle <- rbind(SGDP_rle_all,EMH_rle_all) 
+
+
+callable_genome <- read.table("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_callable_regions_joint_windows20000.bed",col.names = c("chrom","start","end"))  %>% mutate(len = end - start) %>% group_by(chrom) %>% dplyr::summarise(callable = sum(len)/1e6) %>% mutate(chrom = ifelse(chrom == "X",23,chrom)) %>% 
+  mutate_at(c('chrom'), as.numeric) 
+
+non_callable_regions <- read.table(paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed"),header = F,col.names = c("chrom","start","end"))
+
+```
+
+
+## Total Recoverd Neandertal Ancestry
+
+### Calculating Overlap between segments
+
+All segments from all individuals are taken to form overlap groups i.e. all segments that overlap eachother. Not every pairwise segments in an overlap group overlap eachother, but they are connected over a 3rd segment. The start and the end of an overlap group is taken. This gives the start and end point of a genomic interval having a continuous stretch of at least one individual having a  Neandertal segment at any given position inside the interval. A bed file with all start and end positions of these Neandertal intervals is written and from this the non callable regions are subtracted using bedtools subtartc function.
+
+```{r eval=T,echo=F,results='hide'}
+
+NEA_Overlap_data = All_rle %>% filter(target == "NEA") %>% inner_join(.,Joint_Meta[,c("sample_name",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
+  group_overlaps_fn(.)  %>% group_by(chrom,group_id) %>% dplyr::summarise(start_pos = min(pos),end_pos = max(pos_end)) %>% 
+  mutate(pos_len = end_pos - start_pos) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
+  mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,start_pos,end_pos)
+
+write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$group_id),
+                                   file =paste0(folder_path_data,"Total_NEA_ancestry_unmasked.bed"),quote = F,row.names = F,col.names = F,sep = '\t')
+
+system(paste0("bedtools subtract -a ",folder_path_data,"Total_NEA_ancestry_unmasked.bed -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed  > ",folder_path_data,"Total_NEA_Ancestry_masked.bed
+"))
+
+NEA_Overlap_data_masked <- read.table(paste0(folder_path_data,"Total_NEA_Ancestry_masked.bed"),col.names = c("chrom","start","end","group_id")) 
+
+```
+
+### Get the frequency of Neandertal Segmnets
+
+For all individuals.
+
+```{r eval=F,echo=F,results='hide'}
+
+EMH_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = c("NEA"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP)
+
+SGDP_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("state"),target_ = c("NEA"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP)
+
+
+system(paste0("bedtools multiinter -i ",paste(c(EMH_file_names_NEA_state,SGDP_file_names_NEA_state), collapse=' ',sep = " ")," >  ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed"))
+
+system(paste0("bedtools subtract -a ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed  -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed >  ",folder_path_data,"All_NEA_state_with_indcount_masked_matrix.bed
+"))
+
+
+sample_names <- c()
+for(i in c(EMH_file_names_NEA_state)){
+  smp_name = strsplit(x = tail(unlist(strsplit(i,split = "/")),1),split = "_NEA")[[1]][1]
+  sample_names <- c(sample_names,smp_name)
+}
+
+for(i in c(SGDP_file_names_NEA_state)){
+  smp_name = strsplit(x = tail(unlist(strsplit(i,split = "/")),1),split = "_NEA")[[1]][1]
+  sample_names <- c(sample_names,smp_name)
+}
+
+write.table(x = sample_names,file = paste0(folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix_sample_names.txt"),quote = F,row.names = F,col.names = F)
+
+Nea_ancestry_ind_count_matrix_unmasked <- read.table(paste0(folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed"),col.names = c("chrom","start","end","n_ind","ind_index",sample_names))
+
+write.table(Nea_ancestry_ind_count_matrix_unmasked,paste0(folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.csv"),quote = F,row.names = F)
+
+Nea_ancestry_ind_count_matrix <- read.table(paste0(folder_path_data,"All_NEA_state_with_indcount_masked_matrix.bed"),col.names = c("chrom","start","end","n_ind","ind_index",sample_names))
+
+write.table(Nea_ancestry_ind_count_matrix,paste0(folder_path_data,"All_NEA_state_with_indcount_masked_matrix.csv"),quote = F,row.names = F)
+
+system(paste0("bedtools intersect -a /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_callable_regions_joint_windows20000.bed -b ",folder_path_data,"All_NEA_state_with_indcount_masked_matrix.bed -wao >  ",folder_path_data,"All_NEA_state_with_indcount_callable_intersect_matrix.bed
+"))
+
+Nea_Segs_full_callable <- read.table(paste0(folder_path_data,"All_NEA_state_with_indcount_callable_intersect_matrix.bed"))
+
+Nea_Segs_full_callable <- Nea_Segs_full_callable %>%  mutate(V5 = ifelse(V5 == -1, V2,V5),V6 = ifelse(V6 == -1, V3,V6), V7 = ifelse(V7 == ".",0,V7)) %>% dplyr::select(!c(V2,V3,V4)) %>%
+  distinct(V5,V6,.keep_all=T) %>% mutate(V8 = (V6 - V5)) 
+
+Nea_Segs_full_callable[Nea_Segs_full_callable == "."] <- 0
+Nea_Segs_full_callable[] <- lapply(Nea_Segs_full_callable, as.numeric)
+
+colnames(Nea_Segs_full_callable) <- c("chrom","start","end","n_Ind","length",sample_names,"Overlap")
+
+write.table(Nea_Segs_full_callable,
+                       file =paste0(folder_path_data,"All_NEA_state_with_indcount_callable_intersect_matrix_annotated.bed"),quote = F,row.names = F,col.names = F,sep = '\t')
+```
+
+For all ancient individuals and a representative sample of present-day individuals. Here 2 individuals from the SGDP per genetic cluster are taken randomly.
+
+```{r eval=T,echo=F,results='hide'}
+Ancient_inds = Joint_Meta %>% filter(ML_BP_Mean > 0) %>% filter(!!sym(cluster_used) != "Sub-Sahara-Africa") %>% .$sample_name
+
+Present_day_sample_list = c()
+present_day_inds = Joint_Meta %>% filter(ML_BP_Mean == 0) %>% filter(!!sym(cluster_used) != "Sub-Sahara-Africa")
+for(clstr in unique(present_day_inds$clusterF3D)){
+  x = sample(present_day_inds$sample_name[present_day_inds[,cluster_used] == clstr],2,replace = F)
+  #x = gsub("\\.","-",x)
+  Present_day_sample_list <- c(Present_day_sample_list,x)
+}
+
+Nea_ancestry_ind_count_matrix <- read.table(paste0(folder_path_data,"All_NEA_state_with_indcount_masked_matrix.csv"),header=T)
+
+Nea_ancestry_ind_count_matrix_red <- Nea_ancestry_ind_count_matrix %>% dplyr::select(chrom,start,end,n_ind,ind_index,!!c(Ancient_inds,Present_day_sample_list))
+
+write.table(Nea_ancestry_ind_count_matrix_red,
+                       file =paste0(folder_path_data,"Red_NEA_state_with_indcount_masked_matrix.csv"),quote = F,row.names = F,col.names = F,sep = '\t')
+
+```
+
+### Get the frequency of Archaic Segments
+
+For all individuals.
+
+```{r eval=F,echo=F,results='hide'}
+
+EMH_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = c("NEA","DEN"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP)
+
+SGDP_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("state"),target_ = c("NEA","DEN"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP)
+
+
+system(paste0("bedtools multiinter -i ",paste(c(EMH_file_names_NEA_state,SGDP_file_names_NEA_state), collapse=' ',sep = " ")," >  ",folder_path_data,"All_Archaic_state_with_indcount_unmasked_matrix.bed"))
+
+system(paste0("bedtools subtract -a ",folder_path_data,"All_Archaic_state_with_indcount_unmasked_matrix.bed  -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed >  ",folder_path_data,"All_Archaic_state_with_indcount_masked_matrix.bed
+"))
+
+
+sample_names <- c()
+for(i in c(EMH_file_names_NEA_state)){
+  smp_name = strsplit(x = tail(unlist(strsplit(i,split = "/")),1),split = "_NEA")[[1]][1]
+  sample_names <- c(sample_names,smp_name)
+}
+
+for(i in c(SGDP_file_names_NEA_state)){
+  smp_name = strsplit(x = tail(unlist(strsplit(i,split = "/")),1),split = "_NEA")[[1]][1]
+  sample_names <- c(sample_names,smp_name)
+}
+
+write.table(x = sample_names,file = paste0(folder_path_data,"All_Archaic_state_with_indcount_unmasked_matrix_sample_names.txt"),quote = F,row.names = F,col.names = F)
+
+Archaic_ancestry_ind_count_matrix_unmasked <- read.table(paste0(folder_path_data,"All_Archaic_state_with_indcount_unmasked_matrix.bed"),col.names = c("chrom","start","end","n_ind","ind_index",sample_names))
+
+write.table(Archaic_ancestry_ind_count_matrix_unmasked,paste0(folder_path_data,"All_Archaic_state_with_indcount_unmasked_matrix.csv"),quote = F,row.names = F)
+
+Archaic_ancestry_ind_count_matrix <- read.table(paste0(folder_path_data,"All_Archaic_state_with_indcount_masked_matrix.bed"),col.names = c("chrom","start","end","n_ind","ind_index",sample_names))
+
+write.table(Archaic_ancestry_ind_count_matrix,paste0(folder_path_data,"All_Archaic_state_with_indcount_masked_matrix.csv"),quote = F,row.names = F)
+
+system(paste0("bedtools intersect -a /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_callable_regions_joint_windows20000.bed -b ",folder_path_data,"All_Archaic_state_with_indcount_masked_matrix.bed -wao >  ",folder_path_data,"All_Archaic_state_with_indcount_callable_intersect_matrix.bed
+"))
+
+Archaic_Segs_full_callable <- read.table(paste0(folder_path_data,"All_Archaic_state_with_indcount_callable_intersect_matrix.bed"))
+
+Archaic_Segs_full_callable <- Archaic_Segs_full_callable %>%  mutate(V5 = ifelse(V5 == -1, V2,V5),V6 = ifelse(V6 == -1, V3,V6), V7 = ifelse(V7 == ".",0,V7)) %>% dplyr::select(!c(V2,V3,V4)) %>%
+  distinct(V5,V6,.keep_all=T) %>% mutate(V8 = (V6 - V5)) 
+
+Archaic_Segs_full_callable[Archaic_Segs_full_callable == "."] <- 0
+Archaic_Segs_full_callable[] <- lapply(Archaic_Segs_full_callable, as.numeric)
+
+colnames(Archaic_Segs_full_callable) <- c("chrom","start","end","n_Ind","length",sample_names,"Overlap")
+
+write.table(Archaic_Segs_full_callable,
+                       file =paste0(folder_path_data,"All_Archaic_state_with_indcount_callable_intersect_matrix_annotated.bed"),quote = F,row.names = F,col.names = F,sep = '\t')
+```
+
+
+## Neandertal frequency vs B stat
+
+```{r eval=T,echo=F,results='hide'}
+n_inds = Joint_Meta %>% nrow()
+
+sample_names <- read.table(paste0(folder_path_data,"All_Archaic_state_with_indcount_unmasked_matrix_sample_names.txt"))[,1]
+
+
+system(paste0("bedtools intersect -a ",folder_path_data,"All_NEA_state_with_indcount_callable_intersect_matrix_annotated.bed -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/B_Stat/bstat_hg19_with_X_alt.txt -wo > /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/B_Stat/All_NEA_state_with_indcount_callable_intersect_matrix_annotated_Bstat.bed"))
+
+Nea_ancestry_ind_count_reducedSGDP_Bstat <- read.table("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/B_Stat/All_NEA_state_with_indcount_callable_intersect_matrix_annotated_Bstat.bed",col.names = c("chrom","start","end","n_ind","seg_len",sample_names,"Overlap","chromB","startB","endB","Bstat","OverlapBstat")) %>% mutate(Nea_freq = (n_ind / n_inds))
+
+Nea_ancestry_ind_count_reducedSGDP_Bstat <- Nea_ancestry_ind_count_reducedSGDP_Bstat %>% mutate(Bstat_bin = cut(Bstat, breaks = c(-1,200, 400, 600, 800, 1000), right = T, labels = F))
+
+colnames(Nea_ancestry_ind_count_reducedSGDP_Bstat) <- gsub(colnames(Nea_ancestry_ind_count_reducedSGDP_Bstat),pattern = "\\.",replacement = "-")
+
+sampling_ <- c("All","1" ,"2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" )
+
+
+for(i in sampling_){
+  print(paste0("Calculating JK ",i))
+  if(i == "All"){
+        Nea_ancestry_ind_count_reducedSGDP_Bstat_x = Nea_ancestry_ind_count_reducedSGDP_Bstat
+  }else{
+    Nea_ancestry_ind_count_reducedSGDP_Bstat_x = Nea_ancestry_ind_count_reducedSGDP_Bstat %>% filter(chrom != i)
+  }
+    
+  T_0 = Joint_Meta  %>% filter(time_slice == 0) %>% mutate(sample_name = gsub(x =sample_name,pattern = "\\.",replacement = "-")) %>% .$sample_name 
+  
+  Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_0 <- Nea_ancestry_ind_count_reducedSGDP_Bstat_x %>% dplyr::select(chrom,start,end,n_ind,seg_len,!!c(T_0),Overlap,chromB,startB,endB,Bstat,OverlapBstat,Bstat_bin) %>%  mutate(n_ind = rowSums(.[6:(6 + length(T_0) - 1)])) %>%  mutate(Nea_freq = (n_ind / length(T_0))) %>% group_by(Bstat_bin) %>% 
+    summarize(ave_alpha = sum(Nea_freq * OverlapBstat)/ sum(OverlapBstat))  %>% mutate(time = "All Present Day")
+  
+  T_0_Oceania = Joint_Meta  %>% filter(time_slice == 0,SuperclusterF3D == "Oceania") %>% mutate(sample_name = gsub(x =sample_name,pattern = "\\.",replacement = "-")) %>% .$sample_name 
+  
+  Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_0_Oceania <- Nea_ancestry_ind_count_reducedSGDP_Bstat_x %>% dplyr::select(chrom,start,end,n_ind,seg_len,!!c(T_0_Oceania),Overlap,chromB,startB,endB,Bstat,OverlapBstat,Bstat_bin) %>%  mutate(n_ind = rowSums(.[6:(6 + length(T_0_Oceania) - 1)])) %>%  mutate(Nea_freq = (n_ind / length(T_0_Oceania))) %>% group_by(Bstat_bin) %>% 
+    summarize(ave_alpha = sum(Nea_freq * OverlapBstat)/ sum(OverlapBstat))  %>% mutate(time = "Present Day Oceania")
+  
+  T_0_WEurCAS = Joint_Meta  %>% filter(time_slice == 0,SuperclusterF3D == "WEurCAS") %>% mutate(sample_name = gsub(x =sample_name,pattern = "\\.",replacement = "-")) %>% .$sample_name 
+  
+  Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_0_WEurCAS <- Nea_ancestry_ind_count_reducedSGDP_Bstat_x %>% dplyr::select(chrom,start,end,n_ind,seg_len,!!c(T_0_WEurCAS),Overlap,chromB,startB,endB,Bstat,OverlapBstat,Bstat_bin) %>%  mutate(n_ind = rowSums(.[6:(6 + length(T_0_WEurCAS) - 1)])) %>%  mutate(Nea_freq = (n_ind / length(T_0_WEurCAS))) %>% group_by(Bstat_bin) %>% 
+    summarize(ave_alpha = sum(Nea_freq * OverlapBstat)/ sum(OverlapBstat))  %>% mutate(time = "Present Day WEurCAS")
+    
+  T_0_AmericasAsia = Joint_Meta  %>% filter(time_slice == 0,SuperclusterF3D == "Americas&Asia") %>% mutate(sample_name = gsub(x =sample_name,pattern = "\\.",replacement = "-")) %>% .$sample_name 
+  
+  Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_0_AmericasAsia <- Nea_ancestry_ind_count_reducedSGDP_Bstat_x %>% dplyr::select(chrom,start,end,n_ind,seg_len,!!c(T_0_AmericasAsia),Overlap,chromB,startB,endB,Bstat,OverlapBstat,Bstat_bin) %>%  mutate(n_ind = rowSums(.[6:(6 + length(T_0_AmericasAsia) - 1)])) %>%  mutate(Nea_freq = (n_ind / length(T_0_AmericasAsia))) %>% group_by(Bstat_bin) %>% 
+    summarize(ave_alpha = sum(Nea_freq * OverlapBstat)/ sum(OverlapBstat))  %>% mutate(time = "Present Day Americas&Asia")
+  
+  T_1 = Joint_Meta %>% filter(time_slice == 1) %>% mutate(sample_name = gsub(x =sample_name,pattern = "\\.",replacement = "-")) %>% .$sample_name
+  
+  Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_1 <- Nea_ancestry_ind_count_reducedSGDP_Bstat_x %>% dplyr::select(chrom,start,end,n_ind,seg_len,!!c(T_1),Overlap,chromB,startB,endB,Bstat,OverlapBstat,Bstat_bin) %>%  mutate(n_ind = rowSums(.[6:(6 + length(T_1) - 1)])) %>%  mutate(Nea_freq = (n_ind / length(T_1))) %>% group_by(Bstat_bin) %>% 
+    summarize(ave_alpha = sum(Nea_freq * OverlapBstat)/ sum(OverlapBstat))  %>% mutate(time = "1 - 10000")
+  
+  T_2 = Joint_Meta  %>% filter(time_slice == 10000) %>% mutate(sample_name = gsub(x =sample_name,pattern = "\\.",replacement = "-")) %>% .$sample_name
+  
+  Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_2 <- Nea_ancestry_ind_count_reducedSGDP_Bstat_x %>% dplyr::select(chrom,start,end,n_ind,seg_len,!!c(T_2),Overlap,chromB,startB,endB,Bstat,OverlapBstat,Bstat_bin) %>%  mutate(n_ind = rowSums(.[6:(6 + length(T_2) - 1)])) %>%  mutate(Nea_freq = (n_ind / length(T_2))) %>% group_by(Bstat_bin) %>% 
+    summarize(ave_alpha = sum(Nea_freq * OverlapBstat)/ sum(OverlapBstat))   %>% mutate(time = "10000 - 30000")
+  
+  T_3 = Joint_Meta  %>% filter(time_slice == 30000) %>% mutate(sample_name = gsub(x =sample_name,pattern = "\\.",replacement = "-")) %>% .$sample_name
+  
+  Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_3 <- Nea_ancestry_ind_count_reducedSGDP_Bstat_x %>% dplyr::select(chrom,start,end,n_ind,seg_len,!!c(T_3),Overlap,chromB,startB,endB,Bstat,OverlapBstat,Bstat_bin) %>%  mutate(n_ind = rowSums(.[6:(6 + length(T_3) - 1)])) %>%  mutate(Nea_freq = (n_ind / length(T_3))) %>% group_by(Bstat_bin) %>% 
+    summarize(ave_alpha = sum(Nea_freq * OverlapBstat)/ sum(OverlapBstat)) %>% mutate(time = ">30000")
+  
+  Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices <- rbind(Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_0,Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_0_Oceania,Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_0_WEurCAS,Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_0_AmericasAsia,Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_1,Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_2,Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_T_3)
+  
+  Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices$time <- factor(Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices$time, levels=c(">30000", "10000 - 30000", "1 - 10000", "All Present Day","Present Day Oceania","Present Day WEurCAS","Present Day Americas&Asia"))
+  
+  if(i == "All"){
+    Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices_all = Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices 
+    
+  }else{
+    Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices_all[,paste0("ave_alphaJK",i)] <- Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices$ave_alpha
+  }
+  
+
+}
+
+Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices_all$JK_min <- apply(Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices_all[,4:length(Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices_all)], 1, FUN = min, na.rm = TRUE)
+Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices_all$JK_max <- apply(Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices_all[,4:length(Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices_all)], 1, FUN = max, na.rm = TRUE)
+
+  write.csv(Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices_all,file = paste0(folder_path_data,"Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slicesJK.csv"),quote = F,row.names = F)
+
+
+```
+
+## Neandertal frequency vs Recombination
+
+```{r eval=T,echo=F,results='hide'}
+n_inds = Joint_Meta %>% nrow()
+window_sizes = c(20000,50000,100000,200000,500000,1000000)
+
+for(window_size in window_sizes){
+  print(paste0("Calculating window size: ",window_size))
+  sample_names <- read.table(paste0(folder_path_data,"All_Archaic_state_with_indcount_unmasked_matrix_sample_names.txt"))[,1]
+  All_inds = gsub(x = sample_names,pattern = "-",replacement = ".")
+  Ancient_inds = Joint_Meta %>% filter(ML_BP_Mean > 0)  %>% .$sample_name
+  Present_Day_inds = Joint_Meta %>% mutate(sample_name = gsub(x = sample_name,pattern = "-",replacement = ".")) %>%
+    filter(ML_BP_Mean == 0)  %>% .$sample_name
+  
+  chrom_limits = read_csv("~/EMH_Introgression_Project/Introgression_Detection/ref/chrom_limits.csv") 
+  
+  chrom_ = "1"
+  chrom_limits_x = chrom_limits %>% filter(chrom == chrom_)
+  AA_mask <- data.frame(chrom = chrom_,pos=seq(from = chrom_limits_x$pos0_min,to = chrom_limits_x$pos_max,by = window_size))  
+  AA_mask <- AA_mask %>% mutate(pos_end = ifelse(is.na(dplyr::lead(pos)),pos+window_size,dplyr::lead(pos)))
+  
+  chrom_ <- c("2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" , "X" )
+  for(chr in chrom_){
+    chrom_limits_x = chrom_limits %>% filter(chrom == chr)
+    AA_mask_x <- data.frame(chrom = chr,pos=seq(from = chrom_limits_x$pos0_min,to = chrom_limits_x$pos_max,by = window_size))
+    AA_mask_x <- AA_mask_x %>% mutate(pos_end = ifelse(is.na(dplyr::lead(pos)),pos+window_size,dplyr::lead(pos)))
+    AA_mask <- rbind(AA_mask,AA_mask_x)
+  }
+    
+  
+  
+  write.table(AA_mask,paste("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp.bed",sep=""),quote = F,row.names = F,col.names = F,sep = "\t")
+  
+  system(paste0("bedtools intersect -a ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp.bed -b ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/archaicadmixtureAPX.bed -c -f 1E-9 > /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicAdmixtureAPX_sample_dens_windows",window_size,".txt"))
+  
+  
+  coverage_masker = read.table(paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicAdmixtureAPX_sample_dens_windows",window_size,".txt"),col.names = c("chrom","start","end","n_SNP")) %>% 
+    filter(chrom != "X", n_SNP > 0) %>% mutate(chrom = ifelse(chrom == "X",23,chrom))
+  
+  write.table(x = coverage_masker[,c("chrom","start","end")],file = paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Autosomes_chromosome_in_windows",window_size,"bp.bed"),
+              row.names = F,quote = F,col.names = F,sep = "\t")
+  
+  system(paste0("bedtools intersect -b ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed -a /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Autosomes_chromosome_in_windows",window_size,"bp.bed -wo > ",folder_path_data,"All_NEA_state_with_indcount_",genetic_map,"_Autosomes_callable_intersect_matrix_annotated_",window_size,"bp_windows.bed"))
+  
+  Nea_ancestry_20kb_Autosomes <- read.table(paste0(folder_path_data,"All_NEA_state_with_indcount_",genetic_map,"_Autosomes_callable_intersect_matrix_annotated_",window_size,"bp_windows.bed"),col.names = c("chrom","start","end","chromB","startB","endB","n_ind","col_ind",All_inds,"Overlap")) 
+  
+  
+  interpolated_starts <- c()
+  interpolated_ends <- c()
+  for (chr in unique(Nea_ancestry_20kb_Autosomes$chrom)) {
+    print(chr)
+    
+    positions_to_interpolate = Nea_ancestry_20kb_Autosomes %>% filter(chrom == chr)
+    chr = ifelse(chr == 23,"X",chr)
+    map_x <- read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/maps_b37/maps_chr.",chr),header = T) %>%
+      mutate(pos_len = lead(Physical_Pos) - Physical_Pos, map_len = lead(Shared_Map) - Shared_Map) %>% drop_na() %>% mutate(map_rate = map_len / pos_len)
+    
+    # Interpolate genetic distances for the current chromosome
+    interpolated_start <- as.data.frame(approx(map_x$Physical_Pos, map_x$Shared_Map, 
+                                               xout = positions_to_interpolate$start))
+    
+    interpolated_end <- as.data.frame(approx(map_x$Physical_Pos, map_x$Shared_Map, 
+                                             xout = positions_to_interpolate$end))
+    
+    
+    interpolated_starts <- c(interpolated_starts,interpolated_start$y)
+    interpolated_ends <- c(interpolated_ends,interpolated_end$y)
+  }
+  
+  
+  
+  
+  Nea_ancestry_20kb_Autosomes <- Nea_ancestry_20kb_Autosomes %>% mutate(map_start = interpolated_starts,
+                                                        map_end = interpolated_ends) %>%
+    mutate(rec_rate = (map_end - map_start) / window_size)
+  
+  
+  Autosomes_chrom_all_inds = Joint_Meta %>% filter(SuperclusterF3D != "Africa")  %>% .$sample_name
+  
+  Nea_ancestry_20kb_All_Autosomes_sum <- Nea_ancestry_20kb_Autosomes %>% 
+    dplyr::select(chrom,start,end,chromB,startB,endB,n_ind,col_ind,!!c(Autosomes_chrom_all_inds),Overlap,map_start,map_end,rec_rate) %>%
+    mutate(n_ind  = rowSums(.[9:(9 + length(Autosomes_chrom_all_inds) - 1)])) %>%
+    dplyr::select(chrom,start,end,n_ind,Overlap,map_start,map_end,rec_rate) %>% 
+    mutate(Nea_freq = (n_ind / length(Autosomes_chrom_all_inds))) %>% 
+    group_by(chrom,start,end) %>%
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / window_size,Nea_freq = mean(Nea_freq),rec_rate = mean(rec_rate)) %>% mutate(time = "All Data")
+  
+  
+  T_0 = Joint_Meta  %>% filter(SuperclusterF3D != "Africa",time_slice == 0) %>% mutate(sample_name = gsub(x =sample_name,pattern = "-",replacement = ".")) %>% .$sample_name 
+  
+  Nea_ancestry_20kb_stat_T_0 <- Nea_ancestry_20kb_Autosomes %>% 
+    dplyr::select(chrom,start,end,chromB,startB,endB,n_ind,col_ind,!!c(T_0),Overlap,map_start,map_end,rec_rate) %>%
+    mutate(n_ind  = rowSums(.[9:(9 + length(T_0) - 1)])) %>%
+    dplyr::select(chrom,start,end,n_ind,Overlap,map_start,map_end,rec_rate) %>%
+    mutate(Nea_freq = (n_ind / length(T_0))) %>% 
+    group_by(chrom,start,end) %>%
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / window_size,Nea_freq = mean(Nea_freq),rec_rate = mean(rec_rate)) %>% mutate(time = "Present Day")
+  
+  T_1 = Joint_Meta %>% filter(SuperclusterF3D != "Africa",time_slice == 1) %>% mutate(sample_name = gsub(x =sample_name,pattern = "\\.",replacement = "-")) %>% .$sample_name
+  
+  Nea_ancestry_20kb_stat_T_1 <- Nea_ancestry_20kb_Autosomes %>% 
+      dplyr::select(chrom,start,end,chromB,startB,endB,n_ind,col_ind,!!c(T_1),Overlap,map_start,map_end,rec_rate) %>%
+    mutate(n_ind  = rowSums(.[9:(9 + length(T_1) - 1)])) %>%
+    dplyr::select(chrom,start,end,n_ind,Overlap,map_start,map_end,rec_rate) %>%
+      mutate(Nea_freq = (n_ind / length(T_1))) %>% 
+    group_by(chrom,start,end) %>%
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / window_size,Nea_freq = mean(Nea_freq),rec_rate = mean(rec_rate)) %>% mutate(time = "1 - 10000")
+  
+  T_2 = Joint_Meta  %>% filter(SuperclusterF3D != "Africa",time_slice == 10000) %>% mutate(sample_name = gsub(x =sample_name,pattern = "-",replacement = ".")) %>% .$sample_name
+  
+  Nea_ancestry_20kb_stat_T_2 <- Nea_ancestry_20kb_Autosomes %>% 
+      dplyr::select(chrom,start,end,chromB,startB,endB,n_ind,col_ind,!!c(T_2),Overlap,map_start,map_end,rec_rate) %>%
+    mutate(n_ind  = rowSums(.[9:(9 + length(T_2) - 1)])) %>%
+    dplyr::select(chrom,start,end,n_ind,Overlap,map_start,map_end,rec_rate) %>%
+      mutate(Nea_freq = (n_ind / length(T_2))) %>% 
+    group_by(chrom,start,end) %>%
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / window_size,Nea_freq = mean(Nea_freq),rec_rate = mean(rec_rate))  %>% mutate(time = "10000 - 30000")
+  
+  T_3 = Joint_Meta  %>% filter(SuperclusterF3D != "Africa",time_slice == 30000,SuperclusterF3D != "EarlyOoA") %>% mutate(sample_name = gsub(x =sample_name,pattern = "-",replacement = ".")) %>% .$sample_name
+  
+  Nea_ancestry_20kb_stat_T_3 <- Nea_ancestry_20kb_Autosomes %>% 
+      dplyr::select(chrom,start,end,chromB,startB,endB,n_ind,col_ind,!!c(T_3),Overlap,map_start,map_end,rec_rate) %>%
+    mutate(n_ind  = rowSums(.[9:(9 + length(T_3) - 1)])) %>%
+    dplyr::select(chrom,start,end,n_ind,Overlap,map_start,map_end,rec_rate) %>%
+      mutate(Nea_freq = (n_ind / length(T_3))) %>% 
+    group_by(chrom,start,end) %>%
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / window_size,Nea_freq = mean(Nea_freq),rec_rate = mean(rec_rate)) %>% mutate(time = ">30000")
+  
+  T_EarlyOoA = Joint_Meta  %>% filter(SuperclusterF3D != "Africa",time_slice == 30000,SuperclusterF3D == "EarlyOoA") %>% mutate(sample_name = gsub(x =sample_name,pattern = "-",replacement = ".")) %>% .$sample_name
+  
+  Nea_ancestry_20kb_stat_T_EarlyOoA <- Nea_ancestry_20kb_Autosomes %>% 
+      dplyr::select(chrom,start,end,chromB,startB,endB,n_ind,col_ind,!!c(T_EarlyOoA),Overlap,map_start,map_end,rec_rate) %>%
+    mutate(n_ind  = rowSums(.[9:(9 + length(T_EarlyOoA) - 1)])) %>%
+    dplyr::select(chrom,start,end,n_ind,Overlap,map_start,map_end,rec_rate) %>%
+      mutate(Nea_freq = (n_ind / length(T_EarlyOoA))) %>% 
+    group_by(chrom,start,end) %>%
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / window_size,Nea_freq = mean(Nea_freq),rec_rate = mean(rec_rate)) %>% mutate(time = "EarlyOoA")
+  
+  Nea_ancestry_20kb_stat_by_time_slices <- rbind(Nea_ancestry_20kb_All_Autosomes_sum,Nea_ancestry_20kb_stat_T_0,Nea_ancestry_20kb_stat_T_1,Nea_ancestry_20kb_stat_T_2,Nea_ancestry_20kb_stat_T_3,Nea_ancestry_20kb_stat_T_EarlyOoA) %>% ungroup()
+  
+  Nea_ancestry_20kb_stat_by_time_slices$time <- factor(Nea_ancestry_20kb_stat_by_time_slices$time,levels=c("EarlyOoA",">30000", "10000 - 30000", "1 - 10000", "Present Day","All Data"))
+  
+  write.csv(Nea_ancestry_20kb_stat_by_time_slices,file = paste0(folder_path_data,"Nea_ancestry_",window_size,"kb_stat_by_time_slices.csv"),quote = F,row.names = F)
+
+}
+
+
+Nea_ancestry_20kb_stat_by_time_slices <- read.csv(paste0(folder_path_data,"Nea_ancestry_20000kb_stat_by_time_slices.csv")) %>% mutate(window_size = 20000)
+Nea_ancestry_50kb_stat_by_time_slices <- read.csv(paste0(folder_path_data,"Nea_ancestry_50000kb_stat_by_time_slices.csv")) %>% mutate(window_size = 50000) 
+Nea_ancestry_100kb_stat_by_time_slices <- read.csv(paste0(folder_path_data,"Nea_ancestry_1e+05kb_stat_by_time_slices.csv")) %>% mutate(window_size = 100000) 
+Nea_ancestry_200kb_stat_by_time_slices <- read.csv(paste0(folder_path_data,"Nea_ancestry_2e+05kb_stat_by_time_slices.csv")) %>% mutate(window_size = 200000) 
+Nea_ancestry_500kb_stat_by_time_slices <- read.csv(paste0(folder_path_data,"Nea_ancestry_5e+05kb_stat_by_time_slices.csv")) %>% mutate(window_size = 500000) 
+Nea_ancestry_1Mb_stat_by_time_slices <- read.csv(paste0(folder_path_data,"Nea_ancestry_1e+06kb_stat_by_time_slices.csv")) %>% mutate(window_size = 1000000) 
+
+Nea_ancestry_stat_by_time_slices <- rbind(Nea_ancestry_20kb_stat_by_time_slices,Nea_ancestry_50kb_stat_by_time_slices,
+                                          Nea_ancestry_100kb_stat_by_time_slices,Nea_ancestry_200kb_stat_by_time_slices,
+                                          Nea_ancestry_500kb_stat_by_time_slices,Nea_ancestry_1Mb_stat_by_time_slices) %>% 
+  filter(time != "All Data")
+
+t = 1
+res_x <- list()
+for(i in 1:length(unique(Nea_ancestry_stat_by_time_slices$time))){
+  for(j in 1:length(unique(Nea_ancestry_stat_by_time_slices$window_size))){
+    x = Nea_ancestry_stat_by_time_slices %>% filter(time == unique(Nea_ancestry_stat_by_time_slices$time)[i],window_size == unique(Nea_ancestry_stat_by_time_slices$window_size)[j])
+    cor_x =  cor.test(x=x$rec_rate, y=x$ave_alpha, method = 'spearman') 
+    res_x[[t]] = data.frame(time = unique(Nea_ancestry_stat_by_time_slices$time)[i],window_size = unique(Nea_ancestry_stat_by_time_slices$window_size)[j],
+                            rho = cor_x$estimate, p_value = cor_x$p.value)
+    t = t + 1
+  }
+  
+}
+res_rec_rate_vs_Nea_freq_cor <- do.call("rbind",res_x)
+```
+
+### Neandertal frequency vs Recombination with lower cutoffs
+
+Here we do the same analysis as before but lower the minimum cutoffs for Nea segment to 0.01 cM to check if the cutoffs have any major influence on the correlations.
+
+```{r eval=T,echo=F,results='hide'}
+chrom_ <- c("1" ,"2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" )
+
+
+genetic_map = "Shared_Map"
+
+
+dir_path_EMH <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = "archaicadmixtureAPX.rle0.25.xz.anno_all_types$",full.names = T)
+
+
+dir_path_SGDP <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map//rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = "archaicadmixtureAPX.rle0.25.xz.anno_all_types$",full.names = T)
+
+
+EMH_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = c("NEA"),chrom_ = c("1" ,"2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" ),path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/Autosomes"),min_len = 0.01,min_bp_len = 0,min_SNP = 0)
+
+SGDP_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("state"),target_ = c("NEA"),chrom_ = c("1" ,"2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" ),path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/Autosomes"),min_len = 0.01,min_bp_len = 0,min_SNP = 0)
+
+
+system(paste0("bedtools multiinter -i ",paste(c(EMH_file_names_NEA_state,SGDP_file_names_NEA_state), collapse=' ',sep = " ")," >  ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix_",genetic_map,"_Autosomes_min_len_all_0.01.bed"))
+
+
+n_inds = Joint_Meta   %>% nrow()
+window_sizes = c(20000,50000,100000,200000,500000,1000000)
+
+for(window_size in window_sizes){
+  print(paste0("Calculating window size: ",window_size))
+  sample_names <- read.table(paste0(folder_path_data,"All_Archaic_state_with_indcount_unmasked_matrix_sample_names.txt"))[,1]
+  All_inds = gsub(x = sample_names,pattern = "-",replacement = ".")
+  Ancient_inds = Joint_Meta %>% filter(ML_BP_Mean > 0)  %>% .$sample_name
+  Present_Day_inds = Joint_Meta %>% mutate(sample_name = gsub(x = sample_name,pattern = "-",replacement = ".")) %>%
+    filter(ML_BP_Mean == 0)  %>% .$sample_name
+  
+  chrom_limits = read_csv("~/EMH_Introgression_Project/Introgression_Detection/ref/chrom_limits.csv") 
+  
+  chrom_ = "1"
+  chrom_limits_x = chrom_limits %>% filter(chrom == chrom_)
+  AA_mask <- data.frame(chrom = chrom_,pos=seq(from = chrom_limits_x$pos0_min,to = chrom_limits_x$pos_max,by = window_size))  
+  AA_mask <- AA_mask %>% mutate(pos_end = ifelse(is.na(dplyr::lead(pos)),pos+window_size,dplyr::lead(pos)))
+  
+  chrom_ <- c("2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" , "X" )
+  for(chr in chrom_){
+    chrom_limits_x = chrom_limits %>% filter(chrom == chr)
+    AA_mask_x <- data.frame(chrom = chr,pos=seq(from = chrom_limits_x$pos0_min,to = chrom_limits_x$pos_max,by = window_size))
+    AA_mask_x <- AA_mask_x %>% mutate(pos_end = ifelse(is.na(dplyr::lead(pos)),pos+window_size,dplyr::lead(pos)))
+    AA_mask <- rbind(AA_mask,AA_mask_x)
+  }
+  
+  
+  
+  write.table(AA_mask,paste("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp.bed",sep=""),quote = F,row.names = F,col.names = F,sep = "\t")
+  
+  system(paste0("bedtools intersect -a ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp.bed -b ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/archaicadmixtureAPX.bed -c -f 1E-9 > /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicAdmixtureAPX_sample_dens_windows",window_size,".txt"))
+  
+  
+  coverage_masker = read.table(paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicAdmixtureAPX_sample_dens_windows",window_size,".txt"),col.names = c("chrom","start","end","n_SNP")) %>% 
+    filter(chrom != "X", n_SNP > 0) %>% mutate(chrom = ifelse(chrom == "X",23,chrom))
+  
+  write.table(x = coverage_masker[,c("chrom","start","end")],file = paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Autosomes_chromosome_in_windows",window_size,"bp.bed"),
+              row.names = F,quote = F,col.names = F,sep = "\t")
+  
+  system(paste0("bedtools intersect -b ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix_",genetic_map,"_Autosomes_min_len_all_0.01.bed -a /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Autosomes_chromosome_in_windows",window_size,"bp.bed -wo > ",folder_path_data,"All_NEA_state_with_indcount_",genetic_map,"_Autosomes_callable_intersect_matrix_annotated_",window_size,"_Autosomes_min_len_all_0.01.bed"))
+  
+  Nea_ancestry_20kb_Autosomes <- read.table(paste0(folder_path_data,"All_NEA_state_with_indcount_",genetic_map,"_Autosomes_callable_intersect_matrix_annotated_",window_size,"_Autosomes_min_len_all_0.01.bed"),col.names = c("chrom","start","end","chromB","startB","endB","n_ind","col_ind",All_inds,"Overlap")) 
+  
+  
+  interpolated_starts <- c()
+  interpolated_ends <- c()
+  for (chr in unique(Nea_ancestry_20kb_Autosomes$chrom)) {
+    print(chr)
+    
+    positions_to_interpolate = Nea_ancestry_20kb_Autosomes %>% filter(chrom == chr)
+    chr = ifelse(chr == 23,"X",chr)
+    map_x <- read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/maps_b37/maps_chr.",chr),header = T) %>%
+      mutate(pos_len = lead(Physical_Pos) - Physical_Pos, map_len = lead(Shared_Map) - Shared_Map) %>% drop_na() %>% mutate(map_rate = map_len / pos_len)
+    
+    # Interpolate genetic distances for the current chromosome
+    interpolated_start <- as.data.frame(approx(map_x$Physical_Pos, map_x$Shared_Map, 
+                                               xout = positions_to_interpolate$start))
+    
+    interpolated_end <- as.data.frame(approx(map_x$Physical_Pos, map_x$Shared_Map, 
+                                             xout = positions_to_interpolate$end))
+    
+    
+    interpolated_starts <- c(interpolated_starts,interpolated_start$y)
+    interpolated_ends <- c(interpolated_ends,interpolated_end$y)
+  }
+  
+  
+  
+  
+  Nea_ancestry_20kb_Autosomes <- Nea_ancestry_20kb_Autosomes %>% mutate(map_start = interpolated_starts,
+                                                                        map_end = interpolated_ends) %>%
+    mutate(rec_rate = (map_end - map_start) / window_size)
+  
+  
+  Autosomes_chrom_all_inds = Joint_Meta %>% filter(SuperclusterF3D != "Africa")  %>% .$sample_name
+  
+  Nea_ancestry_20kb_All_Autosomes_sum <- Nea_ancestry_20kb_Autosomes %>% 
+    dplyr::select(chrom,start,end,chromB,startB,endB,n_ind,col_ind,!!c(Autosomes_chrom_all_inds),Overlap,map_start,map_end,rec_rate) %>%
+    mutate(n_ind  = rowSums(.[9:(9 + length(Autosomes_chrom_all_inds) - 1)])) %>%
+    dplyr::select(chrom,start,end,n_ind,Overlap,map_start,map_end,rec_rate) %>% 
+    mutate(Nea_freq = (n_ind / length(Autosomes_chrom_all_inds))) %>% 
+    group_by(chrom,start,end) %>%
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / window_size,Nea_freq = mean(Nea_freq),rec_rate = mean(rec_rate)) %>% mutate(time = "All Data")
+  
+  
+  T_0 = Joint_Meta  %>% filter(SuperclusterF3D != "Africa",time_slice == 0) %>% mutate(sample_name = gsub(x =sample_name,pattern = "-",replacement = ".")) %>% .$sample_name 
+  
+  Nea_ancestry_20kb_stat_T_0 <- Nea_ancestry_20kb_Autosomes %>% 
+    dplyr::select(chrom,start,end,chromB,startB,endB,n_ind,col_ind,!!c(T_0),Overlap,map_start,map_end,rec_rate) %>%
+    mutate(n_ind  = rowSums(.[9:(9 + length(T_0) - 1)])) %>%
+    dplyr::select(chrom,start,end,n_ind,Overlap,map_start,map_end,rec_rate) %>%
+    mutate(Nea_freq = (n_ind / length(T_0))) %>% 
+    group_by(chrom,start,end) %>%
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / window_size,Nea_freq = mean(Nea_freq),rec_rate = mean(rec_rate)) %>% mutate(time = "Present Day")
+  
+  T_1 = Joint_Meta %>% filter(SuperclusterF3D != "Africa",time_slice == 1) %>% mutate(sample_name = gsub(x =sample_name,pattern = "\\.",replacement = "-")) %>% .$sample_name
+  
+  Nea_ancestry_20kb_stat_T_1 <- Nea_ancestry_20kb_Autosomes %>% 
+    dplyr::select(chrom,start,end,chromB,startB,endB,n_ind,col_ind,!!c(T_1),Overlap,map_start,map_end,rec_rate) %>%
+    mutate(n_ind  = rowSums(.[9:(9 + length(T_1) - 1)])) %>%
+    dplyr::select(chrom,start,end,n_ind,Overlap,map_start,map_end,rec_rate) %>%
+    mutate(Nea_freq = (n_ind / length(T_1))) %>% 
+    group_by(chrom,start,end) %>%
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / window_size,Nea_freq = mean(Nea_freq),rec_rate = mean(rec_rate)) %>% mutate(time = "1 - 10000")
+  
+  T_2 = Joint_Meta  %>% filter(SuperclusterF3D != "Africa",time_slice == 10000) %>% mutate(sample_name = gsub(x =sample_name,pattern = "-",replacement = ".")) %>% .$sample_name
+  
+  Nea_ancestry_20kb_stat_T_2 <- Nea_ancestry_20kb_Autosomes %>% 
+    dplyr::select(chrom,start,end,chromB,startB,endB,n_ind,col_ind,!!c(T_2),Overlap,map_start,map_end,rec_rate) %>%
+    mutate(n_ind  = rowSums(.[9:(9 + length(T_2) - 1)])) %>%
+    dplyr::select(chrom,start,end,n_ind,Overlap,map_start,map_end,rec_rate) %>%
+    mutate(Nea_freq = (n_ind / length(T_2))) %>% 
+    group_by(chrom,start,end) %>%
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / window_size,Nea_freq = mean(Nea_freq),rec_rate = mean(rec_rate))  %>% mutate(time = "10000 - 30000")
+  
+  T_3 = Joint_Meta  %>% filter(SuperclusterF3D != "Africa",time_slice == 30000,SuperclusterF3D != "EarlyOoA") %>% mutate(sample_name = gsub(x =sample_name,pattern = "-",replacement = ".")) %>% .$sample_name
+  
+  Nea_ancestry_20kb_stat_T_3 <- Nea_ancestry_20kb_Autosomes %>% 
+    dplyr::select(chrom,start,end,chromB,startB,endB,n_ind,col_ind,!!c(T_3),Overlap,map_start,map_end,rec_rate) %>%
+    mutate(n_ind  = rowSums(.[9:(9 + length(T_3) - 1)])) %>%
+    dplyr::select(chrom,start,end,n_ind,Overlap,map_start,map_end,rec_rate) %>%
+    mutate(Nea_freq = (n_ind / length(T_3))) %>% 
+    group_by(chrom,start,end) %>%
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / window_size,Nea_freq = mean(Nea_freq),rec_rate = mean(rec_rate)) %>% mutate(time = ">30000")
+  
+    T_EarlyOoA = Joint_Meta  %>% filter(SuperclusterF3D != "Africa",time_slice == 30000,SuperclusterF3D == "EarlyOoA") %>% mutate(sample_name = gsub(x =sample_name,pattern = "-",replacement = ".")) %>% .$sample_name
+  
+  Nea_ancestry_20kb_stat_T_EarlyOoA <- Nea_ancestry_20kb_Autosomes %>% 
+      dplyr::select(chrom,start,end,chromB,startB,endB,n_ind,col_ind,!!c(T_EarlyOoA),Overlap,map_start,map_end,rec_rate) %>%
+    mutate(n_ind  = rowSums(.[9:(9 + length(T_EarlyOoA) - 1)])) %>%
+    dplyr::select(chrom,start,end,n_ind,Overlap,map_start,map_end,rec_rate) %>%
+      mutate(Nea_freq = (n_ind / length(T_EarlyOoA))) %>% 
+    group_by(chrom,start,end) %>%
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / window_size,Nea_freq = mean(Nea_freq),rec_rate = mean(rec_rate)) %>% mutate(time = "EarlyOoA")
+  
+  Nea_ancestry_20kb_stat_by_time_slices <- rbind(Nea_ancestry_20kb_All_Autosomes_sum,Nea_ancestry_20kb_stat_T_0,Nea_ancestry_20kb_stat_T_1,Nea_ancestry_20kb_stat_T_2,Nea_ancestry_20kb_stat_T_3,Nea_ancestry_20kb_stat_T_EarlyOoA) %>% ungroup()
+  
+  Nea_ancestry_20kb_stat_by_time_slices$time <- factor(Nea_ancestry_20kb_stat_by_time_slices$time,levels=c("EarlyOoA",">30000", "10000 - 30000", "1 - 10000", "Present Day","All Data"))
+  
+
+  write.csv(Nea_ancestry_20kb_stat_by_time_slices,file = paste0(folder_path_data,"Nea_ancestry_",window_size,"kb_stat_by_time_slices_min_len_all_0.01.csv"),quote = F,row.names = F)
+  
+}
+
+
+Nea_ancestry_20kb_stat_by_time_slices <- read.csv(paste0(folder_path_data,"Nea_ancestry_20000kb_stat_by_time_slices_min_len_all_0.01.csv")) %>% mutate(window_size = 20000)
+Nea_ancestry_50kb_stat_by_time_slices <- read.csv(paste0(folder_path_data,"Nea_ancestry_50000kb_stat_by_time_slices_min_len_all_0.01.csv")) %>% mutate(window_size = 50000) 
+Nea_ancestry_100kb_stat_by_time_slices <- read.csv(paste0(folder_path_data,"Nea_ancestry_1e+05kb_stat_by_time_slices_min_len_all_0.01.csv")) %>% mutate(window_size = 100000) 
+Nea_ancestry_200kb_stat_by_time_slices <- read.csv(paste0(folder_path_data,"Nea_ancestry_2e+05kb_stat_by_time_slices_min_len_all_0.01.csv")) %>% mutate(window_size = 200000) 
+Nea_ancestry_500kb_stat_by_time_slices <- read.csv(paste0(folder_path_data,"Nea_ancestry_5e+05kb_stat_by_time_slices_min_len_all_0.01.csv")) %>% mutate(window_size = 500000) 
+Nea_ancestry_1Mb_stat_by_time_slices <- read.csv(paste0(folder_path_data,"Nea_ancestry_1e+06kb_stat_by_time_slices_min_len_all_0.01.csv")) %>% mutate(window_size = 1000000) 
+
+Nea_ancestry_stat_by_time_slices <- rbind(Nea_ancestry_20kb_stat_by_time_slices,Nea_ancestry_50kb_stat_by_time_slices,
+                                          Nea_ancestry_100kb_stat_by_time_slices,Nea_ancestry_200kb_stat_by_time_slices,
+                                          Nea_ancestry_500kb_stat_by_time_slices,Nea_ancestry_1Mb_stat_by_time_slices) %>% 
+  filter(time != "All Data")
+
+t = 1
+res_x <- list()
+for(i in 1:length(unique(Nea_ancestry_stat_by_time_slices$time))){
+  for(j in 1:length(unique(Nea_ancestry_stat_by_time_slices$window_size))){
+    x = Nea_ancestry_stat_by_time_slices %>% filter(time == unique(Nea_ancestry_stat_by_time_slices$time)[i],window_size == unique(Nea_ancestry_stat_by_time_slices$window_size)[j])
+    cor_x =  cor.test(x=x$rec_rate, y=x$ave_alpha, method = 'spearman') 
+    res_x[[t]] = data.frame(time = unique(Nea_ancestry_stat_by_time_slices$time)[i],window_size = unique(Nea_ancestry_stat_by_time_slices$window_size)[j],
+                            rho = cor_x$estimate, p_value = cor_x$p.value)
+    t = t + 1
+  }
+  
+}
+res_rec_rate_vs_Nea_freq_cor <- do.call("rbind",res_x)
+
+
+```
+
+## Deserts
+
+The deserts are computed using segments called as homozygous Africans with the same minimum length cutoffs as used for calling Neandertal segments. Since the way admixfrog calles segments it cal call multiple ancestries for the same genomic location since adjacent segments can be bridged by the penalty and scoring funtion. To make sure not to have African segments that include some short archaic segments, all archaic  segments with a minimum length of 0.001 cM (which is the length of two adjacent bins) will be subtracted.
+
+```{r eval=T,echo=F,results='hide'}
+ 
+EMH_file_names_AFR_homo = write_bed_from_rle(directory_path = dir_path_EMH,split_char = "_",type_ = c("homo"),target_ = c("AFR"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP)
+
+
+SGDP_file_names_AFR_homo = write_bed_from_rle(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("homo"),target_ = c("AFR"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP)
+
+EMH_file_names_Archaic_state_strict = write_bed_from_rle(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = c("DEN","NEA"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = 0.01,min_bp_len = 0,min_SNP = 0,optional_col = "frag_ID")
+
+EMH_file_names_Archaic_state_relaxed = write_bed_from_rle(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = c("DEN","NEA"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = 0.05,min_bp_len = 10000,min_SNP = 5,optional_col = "frag_ID")
+
+SGDP_file_names_Archaic_state_strict = write_bed_from_rle(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("state"),target_ = c("DEN","NEA"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map//rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = 0.01,min_bp_len = 0,min_SNP = 0,optional_col = "frag_ID")
+
+SGDP_file_names_Archaic_state_relaxed = write_bed_from_rle(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("state"),target_ = c("DEN","NEA"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map//rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = 0.05,min_bp_len = 10000,min_SNP = 5,optional_col = "frag_ID")
+
+### computing it on an indidivual level
+Human_only = c(EMH_file_names_AFR_homo,SGDP_file_names_AFR_homo)
+Any_archaic = c(EMH_file_names_Archaic_state_strict,SGDP_file_names_Archaic_state_strict)
+
+
+
+for(ind in 1:length(Human_only)){
+  print(paste0("Human only processing individual ",ind," out of ",length(Human_only)))
+  system(paste0("bedtools subtract -a ",Human_only[ind]," -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed   > ", 
+                substring(Human_only[ind], 1, nchar(Human_only[ind])-4),"_masked.bed"
+  ))
+}
+
+for(ind in 1:length(Any_archaic)){
+  print(paste0("Any Archaic processing individual ",ind," out of ",length(Any_archaic)))
+  system(paste0("bedtools subtract -a ",Any_archaic[ind]," -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed   > ", 
+                substring(Any_archaic[ind], 1, nchar(Any_archaic[ind])-4),"_masked.bed"
+  ))
+}
+
+
+for(ind in 1:length(Human_only)){
+  print(paste0("Deserts processing individual ",ind," out of ",length(Human_only)))
+  system(paste0("bedtools subtract -a ",substring(Human_only[ind], 1, nchar(Human_only[ind])-4),"_masked.bed"," -b ",substring(Any_archaic[ind], 1, nchar(Any_archaic[ind])-4),"_masked.bed","  > ", 
+                substring(Human_only[ind], 1, nchar(Human_only[ind])-13),"_individual_deserts_masked.bed"
+  ))
+}
+
+```
+
+### Computing regions of only Human ancestry and of only Human ancestry per individual
+
+First all homozygous segments are intersected using bedtools multiinter function.  The same is done for all archaic segments found. The resulting archaic segments file is used as a mask and is subtracted from the homozygous African calls. From this cleaned desert calles all region that can not be called are subtracted.
+
+```{r eval=T,echo=F,results='hide'}
+system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_AFR_homo,SGDP_file_names_AFR_homo), collapse=' ',sep = " ")," | awk '{print $1, $2, $3, $4}' | sed 's/ /\t/g'>  ",folder_path_data,"All_homo_AFR_unmasked_cleaned.bed",sep=""))
+
+system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_Archaic_state_relaxed,SGDP_file_names_Archaic_state_relaxed), collapse=' ',sep = " ")," | sed 's/ /\t/g'> ",folder_path_data,"All_Archaic_state_unmasked_relaxed.bed",sep=""))
+
+system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_Archaic_state_relaxed,SGDP_file_names_Archaic_state_relaxed), collapse=' ',sep = " ")," | awk '{print $1, $2, $3, $4}' | sed 's/ /\t/g'> ",folder_path_data,"All_Archaic_state_unmasked_cleaned_relaxed.bed",sep=""))
+
+system(paste0("bedtools subtract -a ",folder_path_data,"All_Archaic_state_unmasked_cleaned_relaxed.bed  > 
+              /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed  >",folder_path_data,"All_Archaic_state_masked_cleaned_relaxed.bed"))
+
+system(paste0("bedtools subtract -a ",folder_path_data,"All_homo_AFR_unmasked_cleaned.bed -b ",folder_path_data,"All_Archaic_state_unmasked_cleaned_relaxed.bed  > ",folder_path_data,"Total_deserts_unmasked_relaxed.bed
+"))
+
+system(paste0("bedtools subtract -a ",folder_path_data,"Total_deserts_unmasked_relaxed.bed -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed > ",folder_path_data,"Total_deserts_masked_relaxed.bed"))
+
+system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_Archaic_state_strict,SGDP_file_names_Archaic_state_strict), collapse=' ',sep = " "),"  | sed 's/ /\t/g'> ",folder_path_data,"All_Archaic_state_unmasked_strict.bed",sep=""))
+
+system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_Archaic_state_strict,SGDP_file_names_Archaic_state_strict), collapse=' ',sep = " ")," | awk '{print $1, $2, $3, $4}' | sed 's/ /\t/g'> ",folder_path_data,"All_Archaic_state_unmasked_cleaned_strict.bed",sep=""))
+
+system(paste0("bedtools subtract -a ",folder_path_data,"All_Archaic_state_unmasked_cleaned_strict.bed  > 
+              /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed  >",folder_path_data,"All_Archaic_state_masked_cleaned_strict.bed"))
+
+system(paste0("bedtools subtract -a ",folder_path_data,"All_homo_AFR_unmasked_cleaned.bed -b ",folder_path_data,"All_Archaic_state_unmasked_cleaned_strict.bed  > ",folder_path_data,"Total_deserts_unmasked_strict.bed"))
+
+system(paste0("bedtools subtract -a ",folder_path_data,"Total_deserts_unmasked_strict.bed -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed  > ",folder_path_data,"Total_deserts_masked_strict.bed"))
+```
+
+### Analysis of known deserts
+
+
+```{r eval=F,echo=F,results='hide'}
+#Read in Data
+dir_path_EMH_human_only <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = "_individual_deserts_masked.bed$",full.names = T)
+
+dir_path_SGDP_human_only <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map//rle/gtmode/length_bin_15/5000//AFR-NEA-DEN/",genetic_map,"/"),pattern = "_individual_deserts_masked.bed$",full.names = T)
+
+dir_path_EMH_any_archaic <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = "DEN_NEA_statemin_len_0.001_minSNP_0_masked.bed$",full.names = T)
+
+dir_path_SGDP_any_archaic <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000//AFR-NEA-DEN/",genetic_map,"/"),pattern = "DEN_NEA_statemin_len_0.001_minSNP_0_masked.bed$",full.names = T)
+
+
+
+Published_deserts_overlap <- Published_deserts %>% filter(annotation != "Skov_2020") %>% dplyr::rename(pos = start, pos_end = end) %>% 
+  group_overlaps_fn(.) %>% pivot_wider(names_from = annotation,
+    values_from = c(pos, pos_end)) %>% 
+  mutate(intersect_start = ifelse(pos_Vernot_2016 >= pos_Sankararaman_2016,pos_Vernot_2016,pos_Sankararaman_2016),
+         intersect_end = ifelse(pos_end_Vernot_2016 <= pos_end_Sankararaman_2016,pos_end_Vernot_2016,pos_end_Sankararaman_2016)) %>%
+  mutate(intersect_start = ifelse(is.na(intersect_start),start,intersect_start),
+         intersect_end = ifelse(is.na(intersect_end),end,intersect_end))
+
+ancient_human_only <- list()
+ancient_any_archaic <- list()
+for(ind in 1:length(dir_path_EMH_human_only)){
+  ancient_human_only[[ind]] <- read.table(dir_path_EMH_human_only[ind]) %>% mutate(ancestry = "human_only") %>% dplyr::rename(chrom = V1,start = V2, end = V3, sample_name = V4)
+  ancient_any_archaic[[ind]] <- read.table(dir_path_EMH_any_archaic[ind]) %>% mutate(ancestry = "any_archaic")  %>% dplyr::rename(chrom = V1,start = V2, end = V3, sample_name = V4,frag_ID = V5)
+}
+ancient_human_only <- do.call('rbind',ancient_human_only) %>% inner_join(.,Joint_Meta[,c("sample_name","ML_BP_Mean")]) %>% mutate(frag_ID = NA)
+ancient_any_archaic <- do.call('rbind',ancient_any_archaic) %>% inner_join(.,Joint_Meta[,c("sample_name","ML_BP_Mean")])
+ancient_all_ancestries_masked <- rbind(ancient_human_only,ancient_any_archaic)
+
+
+Published_deserts_overlap_intersect = Published_deserts_overlap %>% 
+  rowwise %>%
+  do(X=intersect_with_deserts_fn(desert=., est=ancient_all_ancestries_masked,expand_ = 20e6)) %>%
+  unnest(X) %>% 
+  left_join(.,EMH_rle_all_unfiltered[,c("sample","pos","pos_end","map_len","n_all_snps","all_n_AFR","all_n_NEA","all_n_DEN","frag_ID")],by=c("sample_name"="sample","frag_ID"="frag_ID")) 
+
+archaic_ancestry_in_deserts = Published_deserts_overlap %>% 
+  rowwise %>%
+  do(X=intersect_with_deserts_fn(desert=., est=ancient_all_ancestries_masked,expand_ = -200000,end_ = "end",start_ = "start")) %>%
+    unnest(X) %>% filter(ancestry == "any_archaic") %>% mutate(seg_length = end - start) %>% 
+  inner_join(.,EMH_rle_all_unfiltered[,c("sample","pos","pos_end","map_len","n_all_snps","all_n_AFR","all_n_NEA","all_n_DEN","frag_ID")],by=c("sample_name"="sample","frag_ID"="frag_ID"))
+
+write.csv(x = Published_deserts_overlap_intersect,file = paste0(folder_path_data,"Published_deserts_overlap_intersect.cvs"),quote = F,row.names = F)
+write.csv(x = archaic_ancestry_in_deserts,file = paste0(folder_path_data,"archaic_ancestry_in_deserts.csv"),quote = F,row.names = F)
+
+```
+
+#### Check each segmnets in desert
+
+
+```{r eval=T,echo=F,results='hide'}
+  
+Published_deserts_overlap_intersect <- read.csv(paste0(folder_path_data,"Published_deserts_overlap_intersect.cvs"))
+archaic_ancestry_in_deserts <- read.csv(paste0(folder_path_data,"archaic_ancestry_in_deserts.csv"))
+
+min_introgressed_cM_len = 0.1
+text_size = 4
+facet_size = 4
+
+setwd("~/EMH_Introgression_Project/Introgression_Detection/scripts/plotting/")
+source("long_frag_generic.R")
+ref = read_csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_archaicadmixtureAPX_hs37mMask35to99.csv.xz", col_types=cols(chrom=col_character()))
+  
+
+P_desert_in_detail_chrom1 = list()
+run1 = archaic_ancestry_in_deserts%>% filter(desertID == "1:9.9e+07-114900000") %>% arrange(-map_len) %>% 
+   mutate(pos_len = (pos_end - pos)) %>% filter(map_len >= min_introgressed_cM_len )
+
+for(i in 1:length(run1$chrom)){
+  segx = i
+  
+  snp = read_csv(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
+  
+  
+  P_desert_in_detail_chrom1[[segx]] <- plot_snp_run(snp, ref, run1[segx,], 
+                 filter_multi=F,
+                 filter_fixed_strict=F,
+                 filter_ambiguous=T, 
+                 plot_coverage=F,
+                 plot_est = F,
+                 ignore_bins=T,
+                 min_cov = 1,
+                 large_top = 2.5,
+                 min_freq = 0.0,
+                 one_snp_per_bin=T,
+                 col_path = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/scripts/plotting/colors.yaml",
+                 p_read_name=run1$sample_name[segx],
+                 ext=c(0, 0), 
+                 pops=c("NEA", "DEN", "AFR"), base_pop='AFR') +
+    scale_x_discrete(paste0("SNP position\n",run1[segx,"chrom"],":",run1[segx,"pos"],"-",run1[segx,"pos_end"],"\n",run1[segx,"map_len"]," cM")) +
+    ggtitle(run1$sample_name[segx]) + theme(axis.text.x = element_text(size = text_size),
+                                            strip.text.y.right = element_text(size = facet_size,face="bold"))
+}
+
+confirmed_seg_chr1 <- run1[c(1,3,4,6),]
+confirmed_seg_chr1_all <- run1
+
+P_desert_in_detail_chrom3 = list()
+run1 = archaic_ancestry_in_deserts%>% filter(desertID == "3:76500000-90700000") %>% arrange(-map_len) %>% 
+  mutate(pos_len = (pos_end - pos)) %>% filter(map_len >= min_introgressed_cM_len )
+
+#if(length(run1$chrom) == 0){
+#  run1 = archaic_ancestry_in_deserts%>% filter(desertID == "3:76500000-90700000") %>% arrange(-map_len) %>% 
+#  mutate(pos_len = (pos_end - pos))
+#  run1 = run1[1:2,]
+#}
+
+for(i in 1:length(run1$chrom)){
+  segx = i
+  
+  snp = read_csv(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
+  
+  
+  P_desert_in_detail_chrom3[[segx]] <- plot_snp_run(snp, ref, run1[segx,], 
+                 filter_multi=F,
+                 filter_fixed_strict=F,
+                 filter_ambiguous=T, 
+                 plot_coverage=F,
+                 plot_est = F,
+                 ignore_bins=T,
+                 min_cov = 1,
+                 large_top = 2.5,
+                 min_freq = 0.0,
+                 one_snp_per_bin=T,
+                 col_path = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/scripts/plotting/colors.yaml",
+                 p_read_name=run1$sample_name[segx],
+                 ext=c(0, 0), 
+                 pops=c("NEA", "DEN", "AFR"), base_pop='AFR') +
+    scale_x_discrete(paste0("SNP position\n",run1[segx,"chrom"],":",run1[segx,"pos"],"-",run1[segx,"pos_end"],"\n",run1[segx,"map_len"]," cM")) +
+    ggtitle(run1$sample_name[segx]) + theme(axis.text.x = element_text(size = text_size),
+                                            strip.text.y.right = element_text(size = facet_size,face="bold"))
+}
+
+confirmed_seg_chr3 <- run1[1,]
+confirmed_seg_chr3_all <- run1
+
+P_desert_in_detail_chrom7 = list()
+run1 = archaic_ancestry_in_deserts%>% filter(desertID == "7:106300000-1.28e+08") %>% arrange(-map_len) %>% 
+  mutate(pos_len = (pos_end - pos)) %>% filter(map_len >= min_introgressed_cM_len)
+
+#if(length(run1$chrom) == 0){
+#  run1 = archaic_ancestry_in_deserts%>% filter(desertID == "7:106300000-1.28e+08") %>% arrange(-map_len) %>% 
+#  mutate(pos_len = (pos_end - pos))
+#  run1 = run1[1:2,]
+#}
+
+for(i in 1:length(run1$chrom)){
+  segx = i
+  
+  snp = read_csv(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
+  
+  
+  P_desert_in_detail_chrom7[[segx]] <- plot_snp_run(snp, ref, run1[segx,], 
+                 filter_multi=F,
+                 filter_fixed_strict=F,
+                 filter_ambiguous=T, 
+                 plot_coverage=F,
+                 plot_est = F,
+                 ignore_bins=T,
+                 min_cov = 1,
+                 large_top = 2.5,
+                 min_freq = 0.0,
+                 one_snp_per_bin=T,
+                 col_path = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/scripts/plotting/colors.yaml",
+                 p_read_name=run1$sample_name[segx],
+                 ext=c(0, 0), 
+                 pops=c("NEA", "DEN", "AFR"), base_pop='AFR') +
+    scale_x_discrete(paste0("SNP position\n",run1[segx,"chrom"],":",run1[segx,"pos"],"-",run1[segx,"pos_end"],"\n",run1[segx,"map_len"]," cM")) +
+    ggtitle(run1$sample_name[segx]) + theme(axis.text.x = element_text(size = text_size),
+                                            strip.text.y.right = element_text(size = facet_size,face="bold"))
+}
+
+confirmed_seg_chr7 <- run1[1,]
+confirmed_seg_chr7_all <- run1
+
+P_desert_in_detail_chrom8 = list()
+run1 = archaic_ancestry_in_deserts%>% filter(desertID == "8:53900000-6.6e+07") %>% arrange(-map_len) %>% 
+  mutate(pos_len = (pos_end - pos)) %>% filter(map_len >= min_introgressed_cM_len )
+
+#if(length(run1$chrom) == 0){
+#  run1 = archaic_ancestry_in_deserts%>% filter(desertID == "8:53900000-6.6e+07") %>% arrange(-map_len) %>% 
+#  mutate(pos_len = (pos_end - pos))
+#  run1 = run1[1:2,]
+#}
+
+for(i in 1:length(run1$chrom)){
+  segx = i
+  
+  snp = read_csv(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
+  
+  
+  P_desert_in_detail_chrom8[[segx]] <- plot_snp_run(snp, ref, run1[segx,], 
+                 filter_multi=F,
+                 filter_fixed_strict=F,
+                 filter_ambiguous=T, 
+                 plot_coverage=F,
+                 plot_est = F,
+                 ignore_bins=T,
+                 min_cov = 1,
+                 large_top = 2.5,
+                 min_freq = 0.0,
+                 one_snp_per_bin=T,
+                 col_path = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/scripts/plotting/colors.yaml",
+                 p_read_name=run1$sample_name[segx],
+                 ext=c(0, 0), 
+                 pops=c("NEA", "DEN", "AFR"), base_pop='AFR') +
+    scale_x_discrete(paste0("SNP position\n",run1[segx,"chrom"],":",run1[segx,"pos"],"-",run1[segx,"pos_end"],"\n",run1[segx,"map_len"]," cM")) +
+    ggtitle(run1$sample_name[segx]) + theme(axis.text.x = element_text(size = text_size),
+                                            strip.text.y.right = element_text(size = facet_size,face="bold"))
+}
+
+confirmed_seg_chr8 <- run1[1,]
+confirmed_seg_chr8_all <- run1
+
+P_desert_in_detail_chrom13 = list()
+run1 = archaic_ancestry_in_deserts%>% filter(desertID == "13:4.9e+07-6.1e+07") %>% arrange(-map_len) %>% 
+  mutate(pos_len = (pos_end - pos)) %>% filter(map_len >= min_introgressed_cM_len)
+
+#if(length(run1$chrom) == 0){
+#  run1 = archaic_ancestry_in_deserts%>% filter(desertID == "13:4.9e+07-6.1e+07") %>% arrange(-map_len) %>% 
+#  mutate(pos_len = (pos_end - pos))
+#  run1 = run1[1:2,]
+#}
+
+for(i in 1:length(run1$chrom)){
+  segx = i
+  
+  snp = read_csv(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
+  
+  
+  P_desert_in_detail_chrom13[[segx]] <- plot_snp_run(snp, ref, run1[segx,], 
+                 filter_multi=F,
+                 filter_fixed_strict=F,
+                 filter_ambiguous=T, 
+                 plot_coverage=F,
+                 plot_est = F,
+                 ignore_bins=T,
+                 min_cov = 1,
+                 large_top = 2.5,
+                 min_freq = 0.0,
+                 one_snp_per_bin=T,
+                 col_path = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/scripts/plotting/colors.yaml",
+                 p_read_name=run1$sample_name[segx],
+                 ext=c(0, 0), 
+                 pops=c("NEA", "DEN", "AFR"), base_pop='AFR') +
+    scale_x_discrete(paste0("SNP position\n",run1[segx,"chrom"],":",run1[segx,"pos"],"-",run1[segx,"pos_end"],"\n",run1[segx,"map_len"]," cM")) +
+    ggtitle(run1$sample_name[segx]) + theme(axis.text.x = element_text(size = text_size),
+                                            strip.text.y.right = element_text(size = facet_size,face="bold"))
+}
+
+confirmed_seg_chr13 <- run1[c(1,4),]
+confirmed_seg_chr13_all <- run1
+
+Segs_strong_support <-  rbind(confirmed_seg_chr1,confirmed_seg_chr3,confirmed_seg_chr7,confirmed_seg_chr8,confirmed_seg_chr13) %>% mutate(seg_anno = "strong_support") %>% filter(chrom != is.na(chrom))
+
+All_Segs <-  rbind(confirmed_seg_chr1_all,confirmed_seg_chr3_all,confirmed_seg_chr7_all,confirmed_seg_chr8_all,confirmed_seg_chr13_all) %>% mutate(seg_anno = "over_the_cutoff") %>% filter(chrom != is.na(chrom))
+
+All_segs <- left_join(All_Segs,Segs_strong_support[,c("chrom","start","end","seg_anno")],by=c("chrom","start","end")) %>%
+  mutate(annotation = ifelse(is.na(seg_anno.y),seg_anno.x,seg_anno.y)) %>% dplyr::select(!c(seg_anno.x,seg_anno.y))
+
+
+P_desert_in_detail_chrom1_red <- P_desert_in_detail_chrom1[c(1,3,4,6)]
+
+
+P_desert_in_detail_confirmed <- ggpubr::ggarrange(ggpubr::ggarrange(plotlist = c(P_desert_in_detail_chrom1_red,P_desert_in_detail_chrom7,P_desert_in_detail_chrom8[1],P_desert_in_detail_chrom13[c(1,4)])),P_desert_in_detail_chrom3[[1]],nrow = 2,heights = c(3,1))
+
+P_desert_in_detail_all <- ggpubr::ggarrange(ggpubr::ggarrange(plotlist = c(P_desert_in_detail_chrom1,P_desert_in_detail_chrom7,P_desert_in_detail_chrom8,P_desert_in_detail_chrom13),ncol = 3,nrow = 4),P_desert_in_detail_chrom3[[1]],nrow = 2,heights = c(4,1))
+
+#save(P_desert_in_detail_confirmed,file = paste0(folder_path_data,"P_desert_in_detail_red_plot_data"))
+
+ggsave(paste0(folder_path,"Supplement/Supplements_Desert_over_time_segments_in_desert_desert_call.png"),device = "png", bg = "white",P_desert_in_detail_confirmed,width = 9,height = 10)
+
+#save(P_desert_in_detail_all,file = paste0(folder_path_data,"P_desert_in_detail_all_plot_data"))
+
+ggsave(paste0(folder_path,"Supplement/Supplements_Desert_over_time_segments_in_desert_desert_call_all.png"),device = "png", bg = "white",P_desert_in_detail_all,width = 10,height = 12)
+  
+
+Published_deserts_overlap_intersect_anno <- Published_deserts_overlap_intersect %>% left_join(.,All_segs) %>% mutate(ancestry = ifelse(is.na(annotation),ancestry,annotation))
+
+Published_deserts_overlap_intersect_anno_red <- archaic_ancestry_in_deserts  %>% left_join(.,All_segs) %>% mutate(ancestry = ifelse(is.na(annotation),ancestry,annotation))
+
+write.csv(Published_deserts_overlap_intersect_anno_red,paste0(folder_path_data,"Published_deserts_overlap_intersect_anno_segments_at_least_200kb_in.csv"),quote = F,row.names = F)
+
+write.csv(Published_deserts_overlap_intersect_anno,paste0(folder_path_data,"Published_deserts_overlap_intersect_anno.csv"),quote = F,row.names = F)
+
+```
+
+
+#### Permutation test 
+
+Get the permutation on all samples
+
+
+```{r eval=F,echo=F,results='hide'}
+
+sample_names = c(unlist(lapply(dir_path_EMH,function(x) strsplit(x = tail(unlist(strsplit(x,split = "/")),1),split = "_")[[1]][1])),
+                 unlist(lapply(dir_path_SGDP,function(x) strsplit(x = tail(unlist(strsplit(x,split = "/")),1),split = "_archaic")[[1]][1])))
+
+
+
+Published_deserts_overlap <- Published_deserts %>% filter(annotation != "Skov_2020") %>% dplyr::rename(pos = start, pos_end = end) %>% 
+  group_overlaps_fn(.) %>% pivot_wider(names_from = annotation,
+    values_from = c(pos, pos_end)) %>% 
+  mutate(intersect_start = ifelse(pos_Vernot_2016 >= pos_Sankararaman_2016,pos_Vernot_2016,pos_Sankararaman_2016),
+         intersect_end = ifelse(pos_end_Vernot_2016 <= pos_end_Sankararaman_2016,pos_end_Vernot_2016,pos_end_Sankararaman_2016)) %>%
+  mutate(intersect_start = ifelse(is.na(intersect_start),start,intersect_start),
+         intersect_end = ifelse(is.na(intersect_end),end,intersect_end)) %>% 
+  mutate(len = end - start)
+
+
+Published_deserts_overlap$start <- format(Published_deserts_overlap$start, drop0trailing = F, scientific = FALSE)
+Published_deserts_overlap$end <- format(Published_deserts_overlap$end, drop0trailing = F, scientific = FALSE)
+
+write.table(Published_deserts_overlap[,c(1:3)],paste0(folder_path_data,"Published_deserts1.bed"),quote = F,row.names = F,col.names = F,sep = "\t")
+
+system(paste0("cat ",folder_path_data,"Published_deserts1.bed | sed 's/ //g' > ",folder_path_data,"Published_deserts.bed"))
+
+#system(paste0("bedtools intersect -a ",folder_path_data,"Published_deserts.bed -b ",folder_path_data,"All_Archaic_state_unmasked_cleaned_strict.bed -wao > ",folder_path_data,"Published_Deserts_intersect.bed"))
+
+
+system(paste0("bedtools intersect -a ",folder_path_data,"Published_deserts.bed -b ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed -wao > ",folder_path_data,"Published_Deserts_intersect.bed"))
+
+chrom_limits = read.table("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicAdmixtureAPX_sample_dens_windows20000.txt",col.names = c("chrom","start","end","n_SNP")) %>% filter(n_SNP > 0) %>% group_by(chrom) %>% summarize(pos0_min = min(start),pos_max = max(end)) %>% ungroup()
+sliding_by = 1e6
+window_size = mean(Published_deserts_overlap$len)
+
+
+for(i in 0:round(window_size/sliding_by) ){
+  print(paste0("calclulating sliding window: ",i))
+  chrom_ = "1"
+  chrom_limits_x = chrom_limits %>% filter(chrom == chrom_)
+  AA_mask <- data.frame(chrom = chrom_,pos=seq(from = chrom_limits_x$pos0_min + sliding_by * i,to = chrom_limits_x$pos_max,by = window_size))  
+
+  chrom_ <- c("2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" , "X" )
+  for(chr in chrom_){
+    chrom_limits_x = chrom_limits %>% filter(chrom == chr)
+    AA_mask_x <- data.frame(chrom = chr,pos=seq(from = chrom_limits_x$pos0_min + sliding_by * i,to = chrom_limits_x$pos_max,by = window_size))
+    AA_mask <- rbind(AA_mask,AA_mask_x)
+  }
+  
+
+  AA_mask = AA_mask %>% group_by(chrom) %>% mutate(pos_end = ifelse(is.na(lead(pos)),pos+window_size,lead(pos)))
+  
+  write.table(AA_mask,paste("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp_sliding_window",i,".bed",sep=""),quote = F,row.names = F,col.names = F,sep = "\t")
+  
+  #system(paste0("bedtools intersect -a ","~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp_sliding_window",i,".bed"," -b ",folder_path_data,"All_Archaic_state_unmasked_strict.bed -wao > ",folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,".bed"))
+  
+  system(paste0("bedtools intersect -a ","~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp_sliding_window",i,".bed"," -b ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed -wao > ",folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,".bed"))
+  
+}
+
+```
+
+
+subsample permutated matices to the individuals to be included in the calculation of the average Archaic ancestry
+
+```{r eval=F,echo=F,results='hide'}
+
+Calculate_Archaic_alpha_in_permutated_deserts_fn <- function(sample_list,all_sample_names,Output_prefix,window_size,sliding_by){
+  n_inds = length(sample_list)
+  desert_permutation.list <- list()
+  
+  for(i in 0:round(window_size/sliding_by) ){
+    print(paste0("summarising permutation for sliding window: ",i))
+  NEA_ancestry_windows <- read.table(paste0(folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,".bed"),col.names = c("chrom","start","end","chromB","startB","endB","n_ind","combinations",all_sample_names,"Overlap"))  %>%
+    dplyr::select(chrom,end,start,chromB,startB,endB,n_ind,!!c(sample_list),Overlap) %>%
+    filter(chrom != 23, chrom != "X") %>%
+    #suppressWarnings(mutate_at(vars(2:length(.)), as.numeric)) %>%
+    mutate_at(vars(2:length(.)), ~ifelse(is.na(as.numeric(.)), NA, as.numeric(.))) %>%
+    #mutate_at(vars(2:length(.)), as.numeric) %>%
+    drop_na() %>%
+    mutate(desert_len = as.numeric(end) - as.numeric(start)) %>% 
+    mutate(n_ind = rowSums(.[8:(8 + length(sample_list) - 1)])) %>%
+    mutate(n_ind = as.numeric(gsub("\\.",0,n_ind))) %>% 
+    mutate(Nea_freq = (n_ind / n_inds)) %>%
+    group_by(chrom,start,end) %>% 
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / mean(desert_len),Nea_freq = mean(Nea_freq)) %>% 
+    ungroup() %>% 
+    mutate(ave_alpha = ifelse(is.nan(ave_alpha), 0,ave_alpha))
+  
+  write.table(NEA_ancestry_windows,paste0(folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,"_",Output_prefix,"_cleaned.bed"),quote = F,row.names = F,col.names = F,sep = "\t")
+  
+    system(paste0("bedtools subtract -a ",folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,"_",Output_prefix,"_cleaned.bed"," -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows50000.bed   > " ,folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,"_",Output_prefix,"cleaned_masked.bed"))
+    
+  NEA_ancestry_windows_masked <- read.table(paste0(folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,"_",Output_prefix,"cleaned_masked.bed"))%>%
+  mutate(sliding_window = i)
+  
+  desert_permutation.list[[i+1]] <- NEA_ancestry_windows_masked
+  
+  }
+  
+  desert_permutation <- do.call("rbind",desert_permutation.list) %>% dplyr::rename(chrom = V1,start = V2, end = V3, ave_alpha = V4,Nea_freq = V5) %>%
+  mutate(len = end - start) %>% filter(len >= window_size)
+
+  write.table(x = desert_permutation,file = paste0(folder_path_data,"Desert_analysis/Published_Deserts_permutation_cleaned_masked",Output_prefix,".bed"),quote = F,row.names = F,sep="\t")
+  
+  system(paste0("bedtools subtract -a ",folder_path_data,"Desert_analysis/Published_Deserts_permutation_cleaned_masked",Output_prefix,".bed -b ",folder_path_data,"Published_deserts.bed  > ",folder_path_data,"Desert_analysis/Published_Deserts_permutation_cleaned_masked_OG_deserts_removed",Output_prefix,".bed
+  "))
+  
+  system(paste0("bedtools intersect -a ",folder_path_data,"Published_deserts.bed -b ",folder_path_data,"All_Archaic_state_unmasked_strict.bed -wao > ",folder_path_data,"Desert_analysis/Published_Deserts_permutation",Output_prefix,".bed"))
+  
+  desert_permutation <- read.table(paste0(folder_path_data,"Desert_analysis/Published_Deserts_permutation_cleaned_masked_OG_deserts_removed",Output_prefix,".bed"),col.names = c("chrom","start","end","ave_alpha","Nea_freq","sliding_window","seg_len")) %>% mutate(seg_len = end - start) %>% filter(seg_len >= 15000000) %>% mutate(data = "permutated_desert")
+  
+  
+    NEA_ancestry_in_published_desert <- read.table(paste0(folder_path_data,"Desert_analysis/Published_Deserts_permutation",Output_prefix,".bed"),col.names = c("chrom","start","end","chromB","startB","endB","n_ind","combinations",all_sample_names,"Overlap"))  %>%
+    dplyr::select(chrom,end,start,chromB,startB,endB,n_ind,!!c(sample_list),Overlap) %>%
+    filter(chrom != 23, chrom != "X") %>%
+    mutate_at(vars(2:length(.)), ~ifelse(is.na(as.numeric(.)), NA, as.numeric(.))) %>%
+    drop_na() %>%
+    mutate(desert_len = as.numeric(end) - as.numeric(start)) %>% 
+    mutate(n_ind = rowSums(.[8:(8 + length(sample_list) - 1)])) %>%
+    mutate(n_ind = as.numeric(gsub("\\.",0,n_ind))) %>% 
+    mutate(Nea_freq = (n_ind / n_inds)) %>%
+    group_by(chrom,start,end) %>% 
+    summarize(ave_alpha = sum((Nea_freq * Overlap)) / mean(desert_len),Nea_freq = mean(Nea_freq)) %>% 
+    ungroup() %>% 
+    mutate(ave_alpha = ifelse(is.nan(ave_alpha), 0,ave_alpha)) %>% mutate(seg_len = end - start,sliding_window = NA)  %>% mutate(data = "published_desert")
+    
+  desert_permutation_all <- rbind(desert_permutation,NEA_ancestry_in_published_desert)  
+  
+  return(desert_permutation_all)
+    
+}
+
+sample_names = c(unlist(lapply(dir_path_EMH,function(x) strsplit(x = tail(unlist(strsplit(x,split = "/")),1),split = "_")[[1]][1])),
+                 unlist(lapply(dir_path_SGDP,function(x) strsplit(x = tail(unlist(strsplit(x,split = "/")),1),split = "_archaic")[[1]][1])))
+
+
+all_sample_list <- Joint_Meta %>% filter(SuperclusterF3D != "African") %>% .$sample_name
+
+All_Sample_desert_premutated <- Calculate_Archaic_alpha_in_permutated_deserts_fn(sample_list=all_sample_list ,all_sample_names=sample_names,Output_prefix="all_samples",window_size=window_size,sliding_by=sliding_by) %>%
+  mutate(time = "All Data")
+
+T_0 = Joint_Meta  %>% filter(SuperclusterF3D != "African",time_slice == 0)  %>% .$sample_name 
+
+T0_Sample_desert_premutated <- Calculate_Archaic_alpha_in_permutated_deserts_fn(sample_list=T_0 ,all_sample_names=sample_names,Output_prefix="Present_Day",window_size=window_size,sliding_by=sliding_by) %>% 
+  mutate(time = "Present Day")
+
+T_1 = Joint_Meta %>% filter(SuperclusterF3D != "African",time_slice == 1)  %>% .$sample_name
+
+T1_Sample_desert_premutated <- Calculate_Archaic_alpha_in_permutated_deserts_fn(sample_list=T_1 ,all_sample_names=sample_names,Output_prefix="1_10000_samples",window_size=window_size,sliding_by=sliding_by) %>% 
+  mutate(time = "1 - 10000")
+
+T_2 = Joint_Meta  %>% filter(SuperclusterF3D != "African",time_slice == 10000)  %>% .$sample_name
+
+T2_Sample_desert_premutated <- Calculate_Archaic_alpha_in_permutated_deserts_fn(sample_list=T_2 ,all_sample_names=sample_names,Output_prefix="10000_30000_samples",window_size=window_size,sliding_by=sliding_by) %>% mutate(time = "10000 - 30000")
+
+T_3 = Joint_Meta  %>% filter(SuperclusterF3D != "African",time_slice == 30000)  %>% .$sample_name
+
+T3_Sample_desert_premutated <- Calculate_Archaic_alpha_in_permutated_deserts_fn(sample_list=T_3 ,all_sample_names=sample_names,Output_prefix="older_than_30000_samples",window_size=window_size,sliding_by=sliding_by) %>% mutate(time = ">30000")
+
+Sample_desert_premutated_time_slices <- rbind(All_Sample_desert_premutated,T0_Sample_desert_premutated,T1_Sample_desert_premutated,T2_Sample_desert_premutated,T3_Sample_desert_premutated)
+
+Sample_desert_premutated_time_slices$time <- factor(Sample_desert_premutated_time_slices$time, levels=c(">30000", "10000 - 30000", "1 - 10000", "Present Day","All Data"))
+
+write.csv(Sample_desert_premutated_time_slices,file = paste0(folder_path_data,"Sample_desert_premutated_time_slices_usual_min_cutoffs.csv"),quote = F,row.names = F)
+
+#write.csv(Sample_desert_premutated_time_slices,file = paste0(folder_path_data,"Sample_desert_premutated_time_slices_cutoffs_strict_Afr_homo.csv"),quote = F,row.names = F)
+
+
+
+```
+
+## Genome wide summaries
+
+```{r eval=T,echo=F,results='hide'}
+
+## Desert summary
+Deserts_masked_relaxed <- read.table(paste0(folder_path_data,"/Total_deserts_masked_relaxed.bed"),col.names = c("chrom","start","end","n_ind")) %>% filter(n_ind >= ifelse(chrom != 23 , length(unique(Joint_Meta$sample_name)),length(which(Joint_Meta$x_chrom_captured == T)))) %>% group_by(chrom) %>% mutate(desert_length = end - start)
+
+Top_10_longest_Deserts_relaxed <- Deserts_masked_relaxed %>%
+    filter(chrom != 23) %>%
+    arrange(desc(desert_length)) %>%
+    head(10)
+
+Total_deserts_masked_relaxed_summary = Deserts_masked_relaxed  %>% group_by(chrom) %>%
+  dplyr::summarise(total_desert_MB = sum(desert_length)/1e6) %>% inner_join(.,callable_genome,by="chrom") %>% mutate(percent_desert = total_desert_MB/callable) %>% 
+  mutate_at(c('chrom'), as.character) %>% mutate(chrom = ifelse(chrom == "23","X",chrom))
+
+write.csv(Total_deserts_masked_relaxed_summary,paste0(folder_path_data,"Total_deserts_masked_relaxed_summary.csv"),quote = F,row.names = F)
+
+Deserts_masked_strict <- read.table(paste0(folder_path_data,"Total_deserts_masked_strict.bed"),col.names = c("chrom","start","end","n_ind")) %>% filter(n_ind >= ifelse(chrom != 23 , length(unique(Joint_Meta$sample_name)),length(which(Joint_Meta$x_chrom_captured == T)))) %>% group_by(chrom) %>% mutate(desert_length = end - start)
+
+Top_10_longest_Deserts_strict <- Deserts_masked_strict %>%
+    filter(chrom != 23) %>%
+    arrange(desc(desert_length)) %>%
+    head(10)
+
+Total_deserts_masked_strict_summary = Deserts_masked_strict  %>% group_by(chrom) %>%
+  dplyr::summarise(total_desert_MB = sum(desert_length)/1e6) %>% inner_join(.,callable_genome,by="chrom") %>% mutate(percent_desert = total_desert_MB/callable) %>% 
+  mutate_at(c('chrom'), as.character) %>% mutate(chrom = ifelse(chrom == "23","X",chrom))
+
+write.csv(Total_deserts_masked_strict_summary,paste0(folder_path_data,"Total_deserts_masked_strict_summary.csv"),quote = F,row.names = F)
+
+## NEA summary
+
+Total_Nea_Ancestry = NEA_Overlap_data_masked %>% mutate(seg_len = end - start) %>% group_by(chrom) %>%
+  dplyr::summarise(total_NEA_ancestry_Mb = sum(seg_len)/1e6) %>% inner_join(.,callable_genome,by="chrom") %>% mutate(percent_NEA = total_NEA_ancestry_Mb/callable) %>%
+  mutate_at(c('chrom'), as.character) %>% mutate(chrom = ifelse(chrom == "23","X",chrom))
+
+write.csv(Total_Nea_Ancestry,paste0(folder_path_data,"Total_Nea_Ancestry.csv"),quote = F,row.names = F)
+
+Recoverd_haploid_NEA_ancestry = Total_Nea_Ancestry %>% dplyr::summarize(sum_NEA_Mb = sum(total_NEA_ancestry_Mb),percent_NEA = sum(total_NEA_ancestry_Mb)/sum(callable))
+
+non_callable_regions_anno = non_callable_regions %>% mutate(annotation = "noncallable") 
+
+Deserts_masked_strict_anno = Deserts_masked_strict %>% dplyr::select(chrom,start,end) %>% mutate(annotation = "HumanOnly")
+
+NEA_Overlap_data_masked_anno = NEA_Overlap_data_masked %>% dplyr::select(chrom,start,end)  %>% mutate(annotation = "Neandertal")
+
+ALL_genome <- rbind(non_callable_regions_anno,Deserts_masked_strict_anno,NEA_Overlap_data_masked_anno) %>% dplyr::arrange(.,chrom, start) %>% mutate(region_length = end - start) 
+
+write.csv(ALL_genome,paste0(folder_path_data,"ALL_genome_annotation.csv"),quote = F,row.names = F)
+
+```
+
+## Outlier region with additional cutoff
+
+### Annotate outlier regions
+
+```{r eval=T,echo=F,results='hide'}
+
+Selected_regions_list_PP_08 <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Outlier_Analysis_Data/Results_PP_0.8/Supplement_Tables_All_high_frequency_NEA_regions_New.csv",skip = 1,header=T) %>% rename(chrom = chr, pos = Start_pos..bp.,pos_end = End_pos..bp.,map = Genomic_Position_start..cM., map_end = Genomic_Position_end..cM.,Candidate.region.description=Neandertal.introgressed.segment.frequency.over.time.using.EMH.and.PP.samples) %>%
+  mutate(Candidate.region.description = ifelse(Candidate.region.description == "Regions of high frequency in both ancient and present-day (PD) samples","constant",Candidate.region.description)) %>%
+  mutate(Candidate.region.description = ifelse(Candidate.region.description == "Regions of low frequency in ancient and high in present day (PD) samples","increase",Candidate.region.description)) %>% mutate(Candidate.region.description = ifelse(Candidate.region.description == "Regions of high frequency in ancient and low in present day (PD) samples","decrease",Candidate.region.description))
+
+Selected_regions_list_PP_08 <- Selected_regions_list_PP_08[order(Selected_regions_list_PP_08$chrom, Selected_regions_list_PP_08$pos), ]
+
+Selected_regions_list_PP_08 <- Selected_regions_list_PP_08 %>%  group_by(chrom) %>%
+  mutate(next_downstream = lag(Candidate.region.description),next_downstream_pos = lag(pos_end) - pos ,next_upstream = lead(Candidate.region.description),next_upstream_pos = lead(pos) - pos_end) %>% ungroup()
+
+
+Selected_regions_list_PP_08 <- Selected_regions_list_PP_08 %>% 
+  mutate(mean.z.pattern = ifelse(Candidate.region.description == "decrease",(Ancient_higest_Zscore-PD_highest_Zscore),
+                         ifelse(Candidate.region.description == "increase",(PD_highest_Zscore - Ancient_higest_Zscore),(PD_highest_Zscore + Ancient_higest_Zscore)/2)))
+
+Selected_regions_list_PP_08 %>% filter((map_end - map) >= 0.05) %>% nrow()
+
+mean((Selected_regions_list_PP_08$map_end - Selected_regions_list_PP_08$map))
+
+mean((Selected_regions_list_PP_08$pos_end - Selected_regions_list_PP_08$pos))
+
+n_genes = unique(strsplit(paste(Selected_regions_list_PP_08$Genes.annotated..GenCode..Havana.version.[Selected_regions_list_PP_08$Genes.annotated..GenCode..Havana.version. != ""],collapse = ","),",")[[1]])
+
+Selected_regions_list_PP_08 %>% group_by(Candidate.region.description) %>% summarize(n_regions = n(), 
+                                                                                     mean_length_cM = mean((map_end - map)),
+                                                                                     mean_length_bp = mean((pos_end - pos)))
+
+Selected_regions_list_PP_08 %>% filter((map_end - map) >= 0.05) %>% group_by(Candidate.region.description) %>% summarize(n_regions = n(), 
+                                                                                     mean_length_cM = mean((map_end - map)),
+                                                                                     mean_length_bp = mean((pos_end - pos)))
+
+n_genes_constant = unique(strsplit(paste(Selected_regions_list_PP_08$Genes.annotated..GenCode..Havana.version.[Selected_regions_list_PP_08$Genes.annotated..GenCode..Havana.version. != "" & Selected_regions_list_PP_08$Candidate.region.description == "constant"],collapse = ","),",")[[1]])
+
+
+n_genes_increase = unique(strsplit(paste(Selected_regions_list_PP_08$Genes.annotated..GenCode..Havana.version.[Selected_regions_list_PP_08$Genes.annotated..GenCode..Havana.version. != "" & Selected_regions_list_PP_08$Candidate.region.description == "increase"],collapse = ","),",")[[1]])
+
+n_genes_decrease = unique(strsplit(paste(Selected_regions_list_PP_08$Genes.annotated..GenCode..Havana.version.[Selected_regions_list_PP_08$Genes.annotated..GenCode..Havana.version. != "" & Selected_regions_list_PP_08$Candidate.region.description == "decrease"],collapse = ","),",")[[1]])
+
+```
+
+
+
+### Proximity of identified outlier regions
+
+Reading in outlier regions and checking if they are in close proximity to one another (< 1 MB)
+
+```{r eval=T,echo=F,results='hide'}
+
+Decrease_next_to_constant_stringent <- Selected_regions_list_PP_08 %>% filter(Candidate.region.description == "constant" & next_upstream == "decrease" | Candidate.region.description == "constant" & next_downstream == "decrease" ) %>%
+  filter(next_downstream == "decrease"  & abs(next_downstream_pos) <= 1e6 | next_upstream == "decrease" & abs(next_upstream_pos) <= 1e6) 
+
+prop_decrease_next_to_constant_stringent = (nrow(Decrease_next_to_constant_stringent) / length(Selected_regions_list_PP_08$Candidate.region.description[Selected_regions_list_PP_08$Candidate.region.description == "decrease"])) 
+
+Decrease_next_to_increase_stringent <- Selected_regions_list_PP_08 %>% filter(Candidate.region.description == "increase" & next_upstream == "decrease" | Candidate.region.description == "increase" & next_downstream == "decrease" ) %>%
+  filter(next_downstream == "decrease"  & abs(next_downstream_pos) <= 1e6 | next_upstream == "decrease" & abs(next_upstream_pos) <= 1e6) 
+
+prop_decrease_next_to_increase_stringent = (nrow(Decrease_next_to_increase_stringent) / length(Selected_regions_list_PP_08$Candidate.region.description[Selected_regions_list_PP_08$Candidate.region.description == "decrease"])) 
+
+Constant_next_to_increase_stringent <- Selected_regions_list_PP_08 %>% filter(Candidate.region.description == "increase" & next_upstream == "constant" | Candidate.region.description == "increase" & next_downstream == "constant" ) %>%
+  filter(next_downstream == "constant"  & abs(next_downstream_pos) <= 1e6 | next_upstream == "constant" & abs(next_upstream_pos) <= 1e6) 
+
+prop_constant_next_to_increase_stringent = (nrow(Constant_next_to_increase_stringent) / length(Selected_regions_list_PP_08$Candidate.region.description[Selected_regions_list_PP_08$Candidate.region.description == "constant"])) 
+
+non_callable_bins <- read.csv(paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/",genetic_map,"/archaicadmixtureAPX_admixfrog_bins_ref_non_callable_bins.csv"),
+                              col.names = c("chrom","map","pos","id")) %>% group_by(chrom) %>% summarize(amount_non_callable = n() ,length_non_callable = n() * 0.005)
+
+ref_bin <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/Shared_Map/archaicadmixtureAPX_admixfrog_bins_ref.bin.xz") %>%
+  mutate(map = round(as.numeric(map),3)) %>% group_by(chrom) %>% mutate(pos_end = ifelse(is.na(lead(pos)),pos + 5000, lead(pos) - 1),
+                                                                        map_end = ifelse(is.na(lead(map)),map + 0.05, lead(map))) %>% ungroup()
+
+ref_bin_boundries <- ref_bin %>% group_by(chrom) %>% summarize(min_pos = min(pos), max_pos = max(pos)) %>%
+  inner_join(.,non_callable_bins,by="chrom") %>% mutate(max_pos = max_pos - length_non_callable)
+```
+
+```{r eval=F,echo=F,results='hide'}
+reshuffel = 1000
+reshuffel_prop_stringent <- matrix(nrow = reshuffel,ncol = 3,data = NA)
+for(i in 1:reshuffel){
+  print(paste0("reshuffeling: ",i))
+  xx <- inner_join(Selected_regions_list_PP_08,ref_bin_boundries,by="chrom") %>% group_by(chrom) %>%
+    mutate(new_start = sample(seq(0,unique(max_pos),5000),n())) %>%
+    mutate(new_end = new_start + (pos_end - pos)) %>% dplyr::select(!c(pos,pos_end)) %>% rename(pos = new_start, pos_end = new_end)
+  
+  xx <- xx[order(xx$chrom, xx$pos), ]
+  
+    xx <-  xx %>% mutate(next_downstream = lag(Candidate.region.description),next_downstream_pos = lag(pos_end) - pos ,next_upstream = lead(Candidate.region.description),next_upstream_pos = lead(pos) - pos_end) %>% ungroup()
+  
+  
+  Decrease_next_to_constant_x <- xx %>% filter(Candidate.region.description == "constant" & next_upstream == "decrease" | Candidate.region.description == "constant" & next_downstream == "decrease" ) %>%
+    filter(next_downstream == "decrease"  & abs(next_downstream_pos) <= 1e6 | next_upstream == "decrease" & abs(next_upstream_pos) <= 1e6) 
+  
+  prop_decrease_next_to_constant_x = (nrow(Decrease_next_to_constant_x) / length(xx$Candidate.region.description[xx$Candidate.region.description == "decrease"])) 
+  
+  Decrease_next_to_increase_x <- xx %>% filter(Candidate.region.description == "increase" & next_upstream == "decrease" | Candidate.region.description == "increase" & next_downstream == "decrease" ) %>%
+    filter(next_downstream == "decrease"  & abs(next_downstream_pos) <= 1e6 | next_upstream == "decrease" & abs(next_upstream_pos) <= 1e6) 
+  
+  prop_decrease_next_to_increase_x = (nrow(Decrease_next_to_increase_x) / length(xx$Candidate.region.description[xx$Candidate.region.description == "decrease"])) 
+  
+  Constant_next_to_increase_x <- xx %>% filter(Candidate.region.description == "increase" & next_upstream == "constant" | Candidate.region.description == "increase" & next_downstream == "constant" ) %>%
+    filter(next_downstream == "constant"  & abs(next_downstream_pos) <= 1e6 | next_upstream == "constant" & abs(next_upstream_pos) <= 1e6) 
+  
+  prop_constant_next_to_increase_x = (nrow(Constant_next_to_increase_x) / length(xx$Candidate.region.description[xx$Candidate.region.description == "constant"])) 
+  
+  reshuffel_prop_stringent[i,1] <- prop_decrease_next_to_constant_x
+  reshuffel_prop_stringent[i,2] <- prop_decrease_next_to_increase_x
+  reshuffel_prop_stringent[i,3] <- prop_constant_next_to_increase_x
+  
+}
+
+save(reshuffel_prop_stringent,file = paste0(folder_path_data,"Selected_regions_reshuffel_PP_08_new"))
+```
+
+```{r eval=T,echo=F,results='hide'}
+load(paste0(folder_path_data,"Selected_regions_reshuffel_PP_08_new"))
+
+f <- ecdf(reshuffel_prop_stringent[,1])
+Emperical_p_value_prop_decrease_next_to_constant_stringent <- 1 - f(prop_decrease_next_to_constant_stringent)
+f <- ecdf(reshuffel_prop_stringent[,2])
+Emperical_p_value_prop_decrease_next_to_increase_stringent <- 1 - f(prop_decrease_next_to_increase_stringent)
+f <- ecdf(reshuffel_prop_stringent[,3])
+Emperical_p_value_prop_constant_next_to_increase_stringent <- 1 - f(prop_constant_next_to_increase_stringent)
+```
+
+
+### Overlap with Racimo, Sankararaman 2016 and Vernot 2016
+
+```{r eval=T,echo=F,results='hide'}
+
+Racimo_list <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Supplements_Tables/Racimo_et_al_2017_candidate_list.csv")
+Racimo_list$chr <- gsub("chr","",matrix(unlist(strsplit(Racimo_list$Chr.Start.End,":")),ncol = 2,byrow = T)[,1])
+Racimo_list$start <- matrix(unlist(strsplit(matrix(unlist(strsplit(Racimo_list$Chr.Start.End,":")),ncol = 2,byrow = T)[,2],"-")),ncol = 2,byrow = T)[,1]
+Racimo_list$end <- matrix(unlist(strsplit(matrix(unlist(strsplit(Racimo_list$Chr.Start.End,":")),ncol = 2,byrow = T)[,2],"-")),ncol = 2,byrow = T)[,2]
+
+Racimo_list <- Racimo_list %>%   filter(Archaic_pop == "Nea",chr != "X") %>%
+  mutate(chr = as.numeric(chr), start = as.numeric(start), end = as.numeric(end))
+
+get_overlaps_between_x_yrow <- function(x, yrow){
+  
+  overlap_ = yrow %>% filter(
+    start < x$pos_end,
+    end > x$pos,
+    chr == x$chrom
+  )
+  n_lit_overlaps = nrow(overlap_)
+  gene_list_lit = paste(unlist(unique(overlap_$Genes)),collapse = ", ")
+  lit_list = paste(unlist(unique(overlap_$Lit_overlap)),collapse=", ")
+  metadata = tibble(n_lit_overlaps, gene_list_lit,lit_list)
+  
+  return(metadata)
+}
+
+Selected_regions_list_PP_08_all_lit <- Selected_regions_list_PP_08 %>% rowwise %>%
+  do(X=get_overlaps_between_x_yrow(x=., yrow=Racimo_list)) %>%
+  unnest(X) %>% cbind(Selected_regions_list_PP_08,.) %>% 
+  mutate(lit_list = gsub("-","Racimo_2017",lit_list)) %>%
+  mutate(lit_list = ifelse(lit_list == "Sankararaman,Vernot, Sankararaman","Sankararaman,Vernot",lit_list)) %>%
+  mutate(lit_list = ifelse(lit_list == "Sankararaman" | lit_list == "Sankararaman,Vernot",paste0(lit_list,",Racimo_2017"),lit_list))
+
+
+
+
+```
+
+### Overlap with Yair list
+
+```{r eval=T,echo=F,results='hide'}
+Racimo_list <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Supplements_Tables/Racimo_et_al_2017_candidate_list.csv")
+Racimo_list$chr <- gsub("chr","",matrix(unlist(strsplit(Racimo_list$Chr.Start.End,":")),ncol = 2,byrow = T)[,1])
+Racimo_list$start <- matrix(unlist(strsplit(matrix(unlist(strsplit(Racimo_list$Chr.Start.End,":")),ncol = 2,byrow = T)[,2],"-")),ncol = 2,byrow = T)[,1]
+Racimo_list$end <- matrix(unlist(strsplit(matrix(unlist(strsplit(Racimo_list$Chr.Start.End,":")),ncol = 2,byrow = T)[,2],"-")),ncol = 2,byrow = T)[,2]
+
+Racimo_list <- Racimo_list %>%   filter(Archaic_pop == "Nea",chr != "X") %>%
+  mutate(chr = as.numeric(chr), start = as.numeric(start), end = as.numeric(end))
+
+Racimo_list <- Racimo_list[order(Racimo_list$chr, Racimo_list$start), ]
+
+
+Yair_Coop_list <- Racimo_list %>% filter(Archaic_pop == "Nea",Modern_pop %in% c("GBR","EUR","FIN","IBS","CEU","TSI"),chr != "X") %>% 
+  distinct(Chr.Start.End, .keep_all = T)  %>% group_by(chr,Genes) %>% dplyr::summarize(start = min(as.numeric(start)), end = max(as.numeric(end)),Genes = paste(unique(Genes),collapse = ","),Lit_overlap = paste(unique(Lit_overlap),collapse=",")) %>% 
+  ungroup() 
+
+Yair_Coop_list <- Yair_Coop_list[order(Yair_Coop_list$chr, Yair_Coop_list$start), ]
+
+Yair_Coop_list <- Yair_Coop_list  %>% group_by(chr) %>% 
+  mutate(region_before_bp = as.numeric(lag(end)),region_after_bp = as.numeric(lead(start))) %>% ungroup() %>%
+  mutate(distance_region_before_bp = ifelse(is.na(region_before_bp),NA,region_before_bp - as.numeric(start)),
+         distance_region_after_bp = ifelse(is.na(region_after_bp),NA,as.numeric(end) - region_after_bp)) %>%
+  mutate(merge = ifelse(distance_region_before_bp == -1 | distance_region_after_bp == -1,T,F)) %>%
+  mutate(merge = ifelse(is.na(merge), F, merge)) %>% ungroup() 
+
+Yair_Coop_list_merge <- Yair_Coop_list  %>% 
+  filter(merge == T) %>% mutate(region_merge = c(1,1,1,1,2,2,3,3,3,3,3,3)) %>% group_by(chr,region_merge) %>% 
+  dplyr::summarize(start = min(start), end = max(end),Genes = paste(unique(Genes),collapse = ","),Lit_overlap = paste(unique(Lit_overlap),collapse=",")) %>% 
+  ungroup() %>% dplyr::select(!region_merge)  
+  
+  
+Yair_Coop_list <- Yair_Coop_list %>% filter(merge == F) %>% dplyr::select(chr,start,end,Genes,Lit_overlap) %>% 
+  rbind(.,Yair_Coop_list_merge) %>% mutate(Lit_overlap = gsub("-","Racimo_2017",Lit_overlap)) %>%
+  mutate(Lit_overlap = ifelse(Lit_overlap == "Sankararaman" | Lit_overlap == "Sankararaman,Vernot",paste0(Lit_overlap,",Racimo_2017"),Lit_overlap))
+
+Yair_Coop_list_red <- Yair_Coop_list %>% filter(Lit_overlap != "Racimo_2017")
+
+## overlap with found regions
+
+Selected_regions_list_PP_08 <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Outlier_Analysis_Data/Results_PP_0.8/Selection_SITable_April_2024_regions.csv",skip = 2,header=T) %>% rename(chrom = chr, pos = start..bp.,pos_end = end..bp.) %>%
+  mutate(Candidate.region.description = ifelse(Candidate.region.description == "High frequency in both EMH and PP individuals","constant",Candidate.region.description)) %>%
+  mutate(Candidate.region.description = ifelse(Candidate.region.description == "low frequency in EMH and increased in PP individuals","increase",Candidate.region.description)) %>% mutate(Candidate.region.description = ifelse(Candidate.region.description == "High frequency in EMH and decreased in PP individuals","decrease",Candidate.region.description))
+
+Selected_regions_list_PP_08 <- Selected_regions_list_PP_08[order(Selected_regions_list_PP_08$chrom, Selected_regions_list_PP_08$pos), ]
+
+
+get_overlaps_between_x_yrow <- function(x, yrow){
+  
+  overlap_ = yrow %>% filter(
+    pos < x$end,
+    pos_end > x$start,
+    chrom == x$chr
+  )
+  n_regions_overlap = nrow(overlap_)
+  pattern = paste(unlist(unique(overlap_$Candidate.region.description)),collapse=", ")
+  metadata = tibble(n_regions_overlap,pattern)
+  
+  return(metadata)
+}
+
+Yair_Coop_list_overlap_stringent <- Yair_Coop_list_red %>% rowwise %>%
+  do(X=get_overlaps_between_x_yrow(x=., yrow=Selected_regions_list_PP_08)) %>%
+  unnest(X) %>% cbind(Yair_Coop_list_red,.) 
+
+## check for non callable
+
+non_callable_regions <- read.csv(paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/",genetic_map,"/archaicadmixtureAPX_admixfrog_bins_ref_non_callable_bins.csv"),
+                              col.names = c("chrom","map","pos","id")) %>% 
+  group_by(chrom) %>% mutate(start = map, end = map + 0.005) %>% merge_consecutive_bins_fn(.) %>% ungroup() %>%
+  group_by(chrom,group_id) %>% mutate(pos_end = ifelse(is.na(lead(pos)),pos + 5000,lead(pos))) %>% 
+  dplyr::summarize(pos = min(pos), pos_end = max(pos_end)) %>% ungroup()
+
+
+get_overlaps_between_x_yrow <- function(x, yrow){
+  
+  overlap_ = yrow %>% filter(
+    pos < x$end,
+    pos_end > x$start,
+    chrom == x$chr
+  )
+
+  n_non_callable = nrow(overlap_)
+  region_length = x$end - x$start
+  bp_non_callable = sum((overlap_$pos_end - overlap_$pos))
+  
+  prop_callable = (region_length - bp_non_callable) / region_length
+  metadata = tibble(n_non_callable,prop_callable)
+  
+  return(metadata)
+}
+
+Yair_Coop_list_overlap_stringent <- Yair_Coop_list_overlap_stringent %>% rowwise %>%
+  do(X=get_overlaps_between_x_yrow(x=., yrow=non_callable_regions)) %>%
+  unnest(X) %>% cbind(Yair_Coop_list_overlap_stringent,.) 
+
+## check for n ref SNPs
+
+AA_ref <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_archaicadmixtureAPX_hs37mMask35to99.csv.xz") %>%
+  mutate(pos_end = pos + 1)
+
+get_overlaps_between_x_yrow <- function(x, yrow){
+  
+  overlap_ = yrow %>% filter(
+    pos < x$end,
+    pos_end > x$start,
+    chrom == x$chr
+  )
+  
+  recomb_distance = max(overlap_$Shared_Map) - min(overlap_$Shared_Map)
+  n_SNP = nrow(overlap_)
+  Ref_freq <- overlap_ %>% group_by(pos) %>%
+    summarize(
+  NEA = NEA_alt / (NEA_ref + NEA_alt),
+  DEN = DEN_alt / (DEN_ref + DEN_alt),
+  AFR = AFR_alt / (AFR_ref + AFR_alt))
+  
+  n_only_AFR = Ref_freq %>% filter(AFR > 0 & NEA == 0 & DEN == 0) %>% nrow()
+  n_only_NEA = Ref_freq %>% filter(AFR == 0 & NEA > 0 & DEN == 0) %>% nrow()
+  n_only_DEN = Ref_freq %>% filter(AFR == 0 & NEA == 0 & DEN > 0) %>% nrow()
+  metadata = tibble(recomb_distance,n_SNP,n_only_AFR,n_only_NEA,n_only_DEN)
+  
+  return(metadata)
+}
+
+Yair_Coop_list_overlap_stringent <- Yair_Coop_list_overlap_stringent %>% rowwise %>%
+  do(X=get_overlaps_between_x_yrow(x=., yrow=AA_ref)) %>%
+  unnest(X) %>% cbind(Yair_Coop_list_overlap_stringent,.) 
+
+### Z score of the region
+ref_bin <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/Shared_Map/archaicadmixtureAPX_admixfrog_bins_ref.bin.xz") %>%
+  mutate(map = round(as.numeric(map),3)) %>% group_by(chrom) %>% mutate(pos_end = ifelse(is.na(lead(pos)),pos + 5000, lead(pos) - 1),
+                                                                        map_end = ifelse(is.na(lead(map)),map + 0.05, lead(map))) %>% ungroup()
+PP_data_stringent <- read.table("~/EMH_Introgression_Project/Introgression_Detection/Outlier_Analysis_Data/Results_PP_0.8/Data_EMH_PP",header = T) %>%
+  mutate(map = round(as.numeric(bin),3)) %>% 
+  dplyr::rename(chrom = chr) %>%
+  drop_na(map) %>% inner_join(.,ref_bin,by=c("chrom"="chrom","map"="map"))
+
+get_overlaps_between_x_yrow <- function(x, yrow){
+  
+  overlap_ = yrow %>% filter(
+    pos < x$end,
+    pos_end > x$start,
+    chrom == x$chr
+  )
+  
+  if(nrow(overlap_) == 0){
+      highest_Z_score_ancient = NA
+      highest_Z_score_PD = NA
+  } else{
+      highest_Z_score_ancient = max(overlap_$z)
+      highest_Z_score_PD = max(overlap_$z.1)
+  }
+
+
+
+  metadata = tibble(highest_Z_score_ancient,highest_Z_score_PD)
+  
+  return(metadata)
+}
+
+Yair_Coop_list_overlap_stringent <- Yair_Coop_list_overlap_stringent %>% rowwise %>%
+  do(X=get_overlaps_between_x_yrow(x=., yrow=PP_data_stringent)) %>%
+  unnest(X) %>% cbind(Yair_Coop_list_overlap_stringent,.)  
+
+### frequency estimates
+
+
+sample_list = Joint_Meta  %>% 
+  filter(SGDP_Superpop %in% c("WEurAs","CeAsSi")) %>% 
+  dplyr::select(sample_name,time_slice)
+
+EMH_rle_all_red <- EMH_rle_all %>% filter(sample %in% sample_list$sample_name)
+n_EMH = Joint_Meta%>% filter(SGDP_Superpop %in% c("WEurAs","CeAsSi"),ML_BP_Mean > 1) %>% nrow()
+
+SGDP_rle_all_red <-  SGDP_rle_all %>% filter(sample %in% sample_list$sample_name)
+n_SGDP = Joint_Meta%>% filter(SGDP_Superpop %in% c("WEurAs","CeAsSi"),ML_BP_Mean == 0) %>% nrow()
+
+get_overlaps_between_x_yrow <- function(x, yrow){
+  
+  overlap_ = yrow %>% filter(
+    pos < x$end,
+    pos_end > x$start,
+    chrom == x$chr
+  )
+  if(nrow(overlap_) == 0){
+    n_inds = 0
+  } else {
+      n_inds = length(unique(overlap_$sample))
+  }
+
+
+  metadata = tibble(n_inds)
+  
+  return(metadata)
+}
+
+Yair_Coop_list_overlap_stringent <- Yair_Coop_list_overlap_stringent %>% rowwise %>%
+  do(X=get_overlaps_between_x_yrow(x=., yrow=EMH_rle_all_red)) %>%
+  unnest(X) %>% cbind(Yair_Coop_list_overlap_stringent,.) %>% 
+  rename(n_inds_EMH = n_inds) 
+  
+
+Yair_Coop_list_overlap_stringent <- Yair_Coop_list_overlap_stringent %>% rowwise %>%
+  do(X=get_overlaps_between_x_yrow(x=., yrow=SGDP_rle_all_red)) %>%
+  unnest(X) %>% cbind(Yair_Coop_list_overlap_stringent,.) %>% 
+  rename(n_inds_PD = n_inds) 
+
+prop_EMH_CI = binom.confint(x = Yair_Coop_list_overlap_stringent$n_inds_EMH, n = n_EMH, conf.level = 0.95, methods = "wilson")
+prop_PD_CI = binom.confint(x = Yair_Coop_list_overlap_stringent$n_inds_PD, n = n_SGDP, conf.level = 0.95, methods = "wilson") 
+
+Yair_Coop_list_overlap_stringent_final <- Yair_Coop_list_overlap_stringent %>%
+  mutate(prop_EMH = prop_EMH_CI$mean,prop_EMH.lower = prop_EMH_CI$lower,prop_EMH.upper = prop_EMH_CI$upper,
+         prop_PD = prop_PD_CI$mean,prop_PD.lower = prop_PD_CI$lower,prop_PD.upper = prop_PD_CI$upper)
+
+write.table(Yair_Coop_list_overlap_stringent_final,paste0(folder_path_Sup_Tables,"Yair_Coop_list_overlap_stringent_final.csv"),quote = F,row.names = F)
+```
+
+### Highest outlier regions found
+
+```{r eval=T,echo=F,results='hide'}
+
+Selected_regions_lit_overlap_stringent %>% filter(pattern == "constant") %>% nrow()
+Selected_regions_lit_overlap_stringent %>% filter(pattern == "constant") %>% summarize(sum(n_genes))
+
+Constant_regions_replicated_stringent <- Selected_regions_lit_overlap_stringent %>% filter(pattern == "constant") %>% 
+  filter(n_lit_overlaps > 0)
+length(Constant_regions_replicated_stringent$chrom)
+sum(Constant_regions_replicated_stringent$n_genes)
+Constant_regions_new_stringent <- Selected_regions_lit_overlap_stringent %>% filter(pattern == "constant") %>% 
+  filter(n_lit_overlaps == 0)
+length(Constant_regions_new_stringent$chrom)
+sum(Constant_regions_new_stringent$n_genes)
+
+Selected_regions_lit_overlap_stringent %>% filter(pattern == "increase") %>% nrow()
+Selected_regions_lit_overlap_stringent %>% filter(pattern == "increase") %>% summarize(sum(n_genes))
+
+Increase_regions_replicated_stringent <- Selected_regions_lit_overlap_stringent %>% filter(pattern == "increase") %>% 
+  filter(n_lit_overlaps > 0)
+sum(Increase_regions_replicated_stringent$n_genes)
+Increase_regions_new_stringent <- Selected_regions_lit_overlap_stringent %>% filter(pattern == "increase") %>% 
+  filter(n_lit_overlaps == 0)
+sum(Increase_regions_new_stringent$n_genes)
+
+Selected_regions_lit_overlap_stringent %>% filter(pattern == "decrease") %>% nrow()
+Selected_regions_lit_overlap_stringent %>% filter(pattern == "decrease") %>% summarize(sum(n_genes))
+```

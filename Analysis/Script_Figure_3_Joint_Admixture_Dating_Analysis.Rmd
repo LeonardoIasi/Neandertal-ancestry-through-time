@@ -1,0 +1,522 @@
+---
+  title: "Joint Admixture Dating Analysis"
+output:
+  html_document:
+  keep_md: yes
+pdf_document: default
+---
+  
+  ```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Joint Admixture Dating Analysis
+
+## Functions
+
+```{r eval=T,echo=F,results='hide'}
+source("~/EMH_Introgression_Project/Introgression_Detection/scripts/Analysis_R_functions.R")
+```
+
+## Meta Data
+
+```{r eval=T,echo=F,results='hide'}
+# folder
+folder_path = "~/EMH_Introgression_Project/Introgression_Detection/Preliminary_figures_Updates_admixfrog0.7/"
+
+folder_path_data = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/Preliminary_Paper_Figures_Data/"
+
+Joint_Meta <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clusters_using_1240k.csv") %>% 
+  filter(sample_name != "Mota",SuperclusterF3D != "Africa") %>% mutate(sample_name=gsub( "-", ".", sample_name))
+
+cluster_color_broad_all = data.frame(clusterF3D_broad_all = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","North_Africa","postLGM-WEurHG","preLGM-WEurHG","SA","Sahul","Satsurblia","Siberia&Americas" ,"Sub-Sahara-Africa","SWA","WEur","Yamnaya"),
+                                     cluster_color = 
+                                       c("#009292FF","#FFCC00","#6DB6FFFF","#004949FF","#924900FF","#808080","#490092FF","#DB6D00FF","#920000FF","#006DDBFF","#FFB6DBFF","#24FF24FF","#000000FF","#B66DFFFF","#FF6DB6FF","#B6DBFFFF"))
+
+cluster_color_broad = data.frame(clusterF3D_broad = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","postLGM-WEurHG","preLGM-WEurHG","SA","Sahul","Satsurblia","Siberia&Americas" ,"SWA","WEur","Yamnaya"),
+                                 cluster_color = 
+                                   c("#009292FF","#FFCC00","#6DB6FFFF","#004949FF","#924900FF","#490092FF","#DB6D00FF","#920000FF","#006DDBFF","#FFB6DBFF","#24FF24FF","#B66DFFFF","#FF6DB6FF","#B6DBFFFF"))
+
+cluster_color_refined = data.frame(clusterF3D_refined = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","EHG","IUP","preLGM-WEurHG","SA","Sahul","Satsurblia","Siberia&Americas" ,"SWA","WEur","WHG","Yamnaya"),
+                                   cluster_color = c("#009292FF","#6DB6FFFF","#004949FF","#924900FF","#DB6D00FF","#808080","#920000FF","#006DDBFF","#FFB6DBFF","#24FF24FF","#000000FF","#B66DFFFF","#FF6DB6FF","#490092FF","#B6DBFFFF","#FFCC00"))
+
+
+Supercluster_color = data.frame(SuperclusterF3D = c("Americas&Asia","EarlyOoA","Sahul","WEurCAS"),Supercluster_color = c("#924900FF","#004949FF","#006DDBFF","#FF6DB6FF"))
+
+cluster_color = cluster_color_broad
+
+gen_time = 28
+
+# dates from Djakovic et al 2022 for Spain and France
+Protoaurignacian_start = 42653
+Chatelperronian_extinction = 39798
+Neandertal_extinction_Djakovic = 40457
+
+# Higham et al 2014
+TransitionalIndustry_start = 43000
+Nenadertal_extinction_Higham = 39220
+
+Archeaology_first_humans = max(c(Protoaurignacian_start,TransitionalIndustry_start)) / gen_time
+Archeaology_last_neandertals = min(c(Chatelperronian_extinction,Neandertal_extinction_Djakovic,Nenadertal_extinction_Higham)) / gen_time
+
+
+```
+
+
+## Simulations under the model
+
+We used a snakemake script to do the simulation that calls 4 different R scripts. Parameters are read in from a yaml file.
+
+```{r eval=T,echo=F, result='hide'}
+
+
+path_SP <- list.files(path = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/Test_Sim/",pattern = "SP_sim_",full.names = T)
+
+for(i in 1:length(path_SP)){
+  load(path_SP[i])
+  if(i == 1){
+    SP_all_res = rbind(Sp_ACov_res,Sp_seg_res)
+    SP_res_matrix_all_ACov_fit_LL = res_matrix_ACov_fit_LL
+    SP_res_matrix_all_Segfit = res_matrix_Segfit
+  } else {
+    SP_all_res = rbind(SP_all_res,rbind(Sp_ACov_res,Sp_seg_res))
+    SP_res_matrix_all_Segfit <- rbind(SP_res_matrix_all_Segfit,res_matrix_Segfit)
+    SP_res_matrix_all_ACov_fit_LL <- rbind(SP_res_matrix_all_ACov_fit_LL,res_matrix_ACov_fit_LL)
+  }
+
+
+}
+
+SP_res_matrix_all_Segfit <- SP_res_matrix_all_Segfit %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+SP_res_matrix_all_ACov_fit_LL <- SP_res_matrix_all_ACov_fit_LL %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+
+SP_res_matrix_all <- rbind(SP_res_matrix_all_Segfit,SP_res_matrix_all_ACov_fit_LL)
+rm(Sp_ACov_res,Sp_seg_res,res_matrix_Segfit,res_matrix_ACov_fit_LL,SP_res_matrix_all_Segfit,SP_res_matrix_all_ACov_fit_LL)
+
+
+path_TP <- list.files(path = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/Test_Sim/",pattern = "TP_sim_",full.names = T)
+
+for(i in 1:length(path_TP)){
+  load(path_TP[i])
+  if(i == 1){
+    TP_all_res = rbind(Sp_ACov_res,Sp_seg_res)
+    TP_res_matrix_all_ACov_fit_LL = res_matrix_ACov_fit_LL
+    TP_res_matrix_all_Segfit = res_matrix_Segfit
+  } else {
+    TP_all_res = rbind(TP_all_res,rbind(Sp_ACov_res,Sp_seg_res))
+    TP_res_matrix_all_Segfit <- rbind(TP_res_matrix_all_Segfit,res_matrix_Segfit)
+    TP_res_matrix_all_ACov_fit_LL <- rbind(TP_res_matrix_all_ACov_fit_LL,res_matrix_ACov_fit_LL)
+  }
+
+}
+
+TP_res_matrix_all_Segfit <- TP_res_matrix_all_Segfit %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+TP_res_matrix_all_ACov_fit_LL <- TP_res_matrix_all_ACov_fit_LL %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+
+TP_res_matrix_all <- rbind(TP_res_matrix_all_Segfit,TP_res_matrix_all_ACov_fit_LL)
+rm(Sp_ACov_res,Sp_seg_res,res_matrix_Segfit,res_matrix_ACov_fit_LL,TP_res_matrix_all_Segfit,TP_res_matrix_all_ACov_fit_LL)
+
+
+path_EP_1600_400 <- list.files(path = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/Test_Sim/",pattern = "EP_sim_0.015_tm_td_comb_1600_400",full.names = T)
+
+for(i in 1:length(path_EP_1600_400)){
+  load(path_EP_1600_400[i])
+  if(i == 1){
+    EP_all_res = rbind(Sp_ACov_res,Sp_seg_res)
+    EP_res_matrix_all_ACov_fit_LL = res_matrix_ACov_fit_LL
+    EP_res_matrix_all_Segfit = res_matrix_Segfit
+  } else {
+    EP_all_res = rbind(EP_all_res,rbind(Sp_ACov_res,Sp_seg_res))
+    EP_res_matrix_all_Segfit <- rbind(EP_res_matrix_all_Segfit,res_matrix_Segfit)
+    EP_res_matrix_all_ACov_fit_LL <- rbind(EP_res_matrix_all_ACov_fit_LL,res_matrix_ACov_fit_LL)
+  }
+
+}
+
+EP_res_matrix_all_Segfit <- EP_res_matrix_all_Segfit %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% dplyr::group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_res_matrix_all_ACov_fit_LL <- EP_res_matrix_all_ACov_fit_LL %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_all_res_1600_400 = EP_all_res
+EP_res_matrix_all_1600_400 <- rbind(EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+rm(Sp_ACov_res,Sp_seg_res,res_matrix_Segfit,res_matrix_ACov_fit_LL,EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+
+path_EP_1600_1 <- list.files(path = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/Test_Sim/",pattern = "EP_sim_0.015_tm_td_comb_1600_1",full.names = T)
+
+for(i in 1:length(path_EP_1600_1)){
+  load(path_EP_1600_1[i])
+  if(i == 1){
+    EP_all_res = rbind(Sp_ACov_res,Sp_seg_res)
+    EP_res_matrix_all_ACov_fit_LL = res_matrix_ACov_fit_LL
+    EP_res_matrix_all_Segfit = res_matrix_Segfit
+  } else {
+    EP_all_res = rbind(EP_all_res,rbind(Sp_ACov_res,Sp_seg_res))
+    EP_res_matrix_all_Segfit <- rbind(EP_res_matrix_all_Segfit,res_matrix_Segfit)
+    EP_res_matrix_all_ACov_fit_LL <- rbind(EP_res_matrix_all_ACov_fit_LL,res_matrix_ACov_fit_LL)
+  }
+
+}
+
+EP_res_matrix_all_Segfit <- EP_res_matrix_all_Segfit %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_res_matrix_all_ACov_fit_LL <- EP_res_matrix_all_ACov_fit_LL %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_all_res_1600_1= EP_all_res
+EP_res_matrix_all_1600_1 <- rbind(EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+rm(Sp_ACov_res,Sp_seg_res,res_matrix_Segfit,res_matrix_ACov_fit_LL,EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+
+
+path_EP_1600_200 <- list.files(path = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/Test_Sim/",pattern = "EP_sim_0.015_tm_td_comb_1600_200",full.names = T)
+
+for(i in 1:length(path_EP_1600_200)){
+  load(path_EP_1600_200[i])
+  if(i == 1){
+    EP_all_res = rbind(Sp_ACov_res,Sp_seg_res)
+    EP_res_matrix_all_ACov_fit_LL = res_matrix_ACov_fit_LL
+    EP_res_matrix_all_Segfit = res_matrix_Segfit
+  } else {
+    EP_all_res = rbind(EP_all_res,rbind(Sp_ACov_res,Sp_seg_res))
+    EP_res_matrix_all_Segfit <- rbind(EP_res_matrix_all_Segfit,res_matrix_Segfit)
+    EP_res_matrix_all_ACov_fit_LL <- rbind(EP_res_matrix_all_ACov_fit_LL,res_matrix_ACov_fit_LL)
+  }
+
+}
+
+EP_res_matrix_all_Segfit <- EP_res_matrix_all_Segfit %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_res_matrix_all_ACov_fit_LL <- EP_res_matrix_all_ACov_fit_LL %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_all_res_1600_200 = EP_all_res
+EP_res_matrix_all_1600_200 <- rbind(EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+rm(Sp_ACov_res,Sp_seg_res,res_matrix_Segfit,res_matrix_ACov_fit_LL,EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+
+path_EP_1700_400 <- list.files(path = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/Test_Sim/",pattern = "EP_sim_0.015_tm_td_comb_1700_400",full.names = T)
+
+for(i in 1:length(path_EP_1700_400)){
+  load(path_EP_1700_400[i])
+  if(i == 1){
+    EP_all_res = rbind(Sp_ACov_res,Sp_seg_res)
+    EP_res_matrix_all_ACov_fit_LL = res_matrix_ACov_fit_LL
+    EP_res_matrix_all_Segfit = res_matrix_Segfit
+  } else {
+    EP_all_res = rbind(EP_all_res,rbind(Sp_ACov_res,Sp_seg_res))
+    EP_res_matrix_all_Segfit <- rbind(EP_res_matrix_all_Segfit,res_matrix_Segfit)
+    EP_res_matrix_all_ACov_fit_LL <- rbind(EP_res_matrix_all_ACov_fit_LL,res_matrix_ACov_fit_LL)
+  }
+
+}
+
+EP_res_matrix_all_Segfit <- EP_res_matrix_all_Segfit %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_res_matrix_all_ACov_fit_LL <- EP_res_matrix_all_ACov_fit_LL %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_all_res_1700_400  = EP_all_res
+EP_res_matrix_all_1700_400  <- rbind(EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+rm(Sp_ACov_res,Sp_seg_res,res_matrix_Segfit,res_matrix_ACov_fit_LL,EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+
+path_EP_1800_600 <- list.files(path = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/Test_Sim/",pattern = "EP_sim_0.015_tm_td_comb_1800_600",full.names = T)
+
+for(i in 1:length(path_EP_1800_600)){
+  load(path_EP_1800_600[i])
+  if(i == 1){
+    EP_all_res = rbind(Sp_ACov_res,Sp_seg_res)
+    EP_res_matrix_all_ACov_fit_LL = res_matrix_ACov_fit_LL
+    EP_res_matrix_all_Segfit = res_matrix_Segfit
+  } else {
+    EP_all_res = rbind(EP_all_res,rbind(Sp_ACov_res,Sp_seg_res))
+    EP_res_matrix_all_Segfit <- rbind(EP_res_matrix_all_Segfit,res_matrix_Segfit)
+    EP_res_matrix_all_ACov_fit_LL <- rbind(EP_res_matrix_all_ACov_fit_LL,res_matrix_ACov_fit_LL)
+  }
+
+}
+
+EP_res_matrix_all_Segfit <- EP_res_matrix_all_Segfit %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_res_matrix_all_ACov_fit_LL <- EP_res_matrix_all_ACov_fit_LL %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_all_res_1800_600 = EP_all_res
+EP_res_matrix_all_1800_600  <- rbind(EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+rm(Sp_ACov_res,Sp_seg_res,res_matrix_Segfit,res_matrix_ACov_fit_LL,EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+
+
+path_EP_1900_800 <- list.files(path = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/Test_Sim/",pattern = "EP_sim_0.015_tm_td_comb_1900_800",full.names = T)
+
+for(i in 1:length(path_EP_1900_800)){
+  load(path_EP_1900_800[i])
+  if(i == 1){
+    EP_all_res = rbind(Sp_ACov_res,Sp_seg_res)
+    EP_res_matrix_all_ACov_fit_LL = res_matrix_ACov_fit_LL
+    EP_res_matrix_all_Segfit = res_matrix_Segfit
+  } else {
+    EP_all_res = rbind(EP_all_res,rbind(Sp_ACov_res,Sp_seg_res))
+    EP_res_matrix_all_Segfit <- rbind(EP_res_matrix_all_Segfit,res_matrix_Segfit)
+    EP_res_matrix_all_ACov_fit_LL <- rbind(EP_res_matrix_all_ACov_fit_LL,res_matrix_ACov_fit_LL)
+  }
+
+}
+
+EP_res_matrix_all_Segfit <- EP_res_matrix_all_Segfit %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_res_matrix_all_ACov_fit_LL <- EP_res_matrix_all_ACov_fit_LL %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_all_res_1900_800 = EP_all_res
+EP_res_matrix_all_1900_800  <- rbind(EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+rm(Sp_ACov_res,Sp_seg_res,res_matrix_Segfit,res_matrix_ACov_fit_LL,EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+
+path_EP_2000_1000 <- list.files(path = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/Test_Sim/",pattern = "EP_sim_0.015_tm_td_comb_2000_1000",full.names = T)
+
+for(i in 1:length(path_EP_2000_1000)){
+  load(path_EP_2000_1000[i])
+  if(i == 1){
+    EP_all_res = rbind(Sp_ACov_res,Sp_seg_res)
+    EP_res_matrix_all_ACov_fit_LL = res_matrix_ACov_fit_LL
+    EP_res_matrix_all_Segfit = res_matrix_Segfit
+  } else {
+    EP_all_res = rbind(EP_all_res,rbind(Sp_ACov_res,Sp_seg_res))
+    EP_res_matrix_all_Segfit <- rbind(EP_res_matrix_all_Segfit,res_matrix_Segfit)
+    EP_res_matrix_all_ACov_fit_LL <- rbind(EP_res_matrix_all_ACov_fit_LL,res_matrix_ACov_fit_LL)
+  }
+
+}
+
+EP_res_matrix_all_Segfit <- EP_res_matrix_all_Segfit %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_res_matrix_all_ACov_fit_LL <- EP_res_matrix_all_ACov_fit_LL %>% group_by(Var1,Var2,method,model,simulation,true_tm1,true_tm2,true_td,truncation,noise) %>%
+  dplyr::summarize(value = sum(value), value0 = mean(value0)) %>% ungroup() %>% group_by(noise) %>%
+  mutate(est_td = Var1[which.max(value0)],est_tm = Var2[which.max(value0)]) %>%
+  mutate(value0 = ifelse(value0 < -100,-101,value0))
+
+EP_all_res_2000_1000 = EP_all_res
+EP_res_matrix_all_2000_1000  <- rbind(EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+rm(Sp_ACov_res,Sp_seg_res,res_matrix_Segfit,res_matrix_ACov_fit_LL,EP_res_matrix_all_Segfit,EP_res_matrix_all_ACov_fit_LL)
+
+
+P_SP_fit_res_A_Data <- rbind(SP_all_res,TP_all_res,EP_all_res_1600_400) %>% 
+  mutate(sim = ifelse(simulation == "SimplePulse","Simple Pulse",ifelse(simulation == "TwoPulses","Two Pulse","Extended Pulse"))) 
+
+P_SP_fit_res_B_Data <- rbind(EP_all_res_1600_1,EP_all_res_1600_200,EP_all_res_1700_400,EP_all_res_1800_600,EP_all_res_1900_800,EP_all_res_2000_1000) %>% 
+  mutate(sim = ifelse(simulation == "SimplePulse","Simple Pulse",ifelse(simulation == "TwoPulses","Two Pulse","Extended Pulse"))) 
+
+P_EP_fit_res_C_Data <- rbind(SP_res_matrix_all,TP_res_matrix_all,EP_res_matrix_all_1600_400) %>% 
+  mutate(sim = ifelse(simulation == "SimplePulse","Simple Pulse",ifelse(simulation == "TwoPulses","Two Pulse","Extended Pulse"))) 
+
+P_EP_fit_res_D_Data <- rbind(EP_res_matrix_all_1600_1,EP_res_matrix_all_1600_200,EP_res_matrix_all_1700_400,EP_res_matrix_all_1800_600,EP_res_matrix_all_1900_800,EP_res_matrix_all_2000_1000) %>% 
+  mutate(sim = ifelse(simulation == "SimplePulse","Simple Pulse",ifelse(simulation == "TwoPulses","Two Pulse","Extended Pulse")))
+
+write.csv(P_SP_fit_res_A_Data,paste0(folder_path_data,"P_SP_fit_res_A_Data.csv"),quote = F,row.names = F)
+write.csv(P_SP_fit_res_B_Data,paste0(folder_path_data,"P_SP_fit_res_B_Data.csv"),quote = F,row.names = F)
+write.csv(P_EP_fit_res_C_Data,paste0(folder_path_data,"P_EP_fit_res_C_Data.csv"),quote = F,row.names = F)
+write.csv(P_EP_fit_res_D_Data,paste0(folder_path_data,"P_EP_fit_res_D_Data.csv"),quote = F,row.names = F)
+
+```
+
+## Estimating Jackknife se by chrom for SP
+
+```{r eval=T,echo=F, result='hide'}
+
+
+## ACov
+
+JK_ACov <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Coancestry_Curves_Dating/ACov_Datinf_asc.snp",sep=" ",header = F) %>% 
+  dplyr::select(V1,V2) %>% group_by(V1) %>% dplyr::summarize(n_pos = n())
+
+
+SP_Acov <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/Results/All_ACov_SP_res_merged_ACov_Run_SP.csv") %>% mutate( JK = ifelse(JKchrom == "All", F,T), exclude = ifelse(exclude == "", "All_Data", exclude)) 
+
+ACov_Run_SP_JKchrom_mean_out <- list()
+est = unique(SP_Acov[,c("truncation","weighted","exclude")])
+for(i in 1:length(est$truncation)){
+  ACov_Run_SP_JKchrom_summary <- SP_Acov %>% 
+    filter(truncation == est$truncation[i], weighted == est$weighted[i], exclude == est$exclude[i], JK == T) %>% 
+    mutate(JKchrom = as.numeric(JKchrom)) %>%
+    inner_join(.,JK_ACov,by=c("JKchrom"="V1"))
+  ACov_Run_SP_JKchrom_mean <- SP_Acov %>% filter(truncation == est$truncation[i], weighted == est$weighted[i], exclude == est$exclude[i], JK == F) 
+  
+  write.table(x = data.frame(ACov_Run_SP_JKchrom_summary$JKchrom,ACov_Run_SP_JKchrom_summary$n_pos,ACov_Run_SP_JKchrom_summary$tm),file = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/JKResults/ACov_Run_EP_JKchrom_sum_tm_",est$truncation[i],"_",est$weighted[i],"_",est$exclude[i],".jin"),quote = F,row.names = F,col.names = F)
+
+  system(paste0("~/DATES/src/./dowtjack -i /mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/JKResults/ACov_Run_EP_JKchrom_sum_tm_",est$truncation[i],"_",est$weighted[i],"_",est$exclude[i],".jin -m ",ACov_Run_SP_JKchrom_mean$tm," -o /mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/JKResults/ACov_Run_EP_JKchrom_sum_tm_",est$truncation[i],"_",est$weighted[i],"_",est$exclude[i],".jout"))
+
+  tm_SE_est_SP <- read.table(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/JKResults/ACov_Run_EP_JKchrom_sum_tm_",est$truncation[i],"_",est$weighted[i],"_",est$exclude[i],".jout"))
+  ACov_Run_SP_JKchrom_mean_out[[i]] <- ACov_Run_SP_JKchrom_mean %>% mutate(mean_JK = tm_SE_est_SP[1,1],se_JK = tm_SE_est_SP[1,2])
+
+}
+
+SP_Acov_anno <- do.call("rbind",ACov_Run_SP_JKchrom_mean_out) %>%
+  mutate(weighted2 = ifelse(weighted == "yes","Same weight for each Individual","Weight proportional to data")) %>%
+  dplyr::select(tm,mean_JK,se_JK,tm_lower,tm_upper,LL,map,truncation,weighted2,exclude,gen_time) %>% 
+  dplyr::rename(weighted = weighted2) %>% 
+  filter(map == "Shared_Map")
+
+write.table(SP_Acov_anno,"/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/Results/All_ACov_SP_res_merged_ACov_Run_SP_annotated.csv",quote = F,row.names = F,sep=",")
+
+## Seg
+
+JK_segments <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_archaicadmixtureAPX_hs37mMask35to99.csv.xz") %>%
+  filter(chrom != "X") %>%
+  group_by(chrom) %>% dplyr::summarize(chrom_start = min(pos),chrom_end = max(pos)) %>% mutate(chrom_length = chrom_end - chrom_start)
+
+SP_Seg <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/Results/All_Seg_SP_res_merged_Seg_Run_SP.csv") %>% 
+  mutate( JK = ifelse(JKchrom == "All", F,T), exclude = ifelse(exclude == "", "All_Data", exclude)) 
+
+Seg_Run_SP_JKchrom_mean_out <- list()
+est = unique(SP_Seg[,c("min_l","exclude")])
+for(i in 1:length(est$min_l)){
+  Seg_Run_SP_JKchrom_summary <- SP_Seg %>% 
+    filter(exclude == est$exclude[i], min_l == est$min_l[i],JK == T) %>% 
+    inner_join(.,JK_segments,by=c("JKchrom"="chrom"))
+  Seg_Run_SP_JKchrom_mean <- SP_Seg %>% filter(exclude == est$exclude[i], min_l == est$min_l[i],JK == F)
+  
+  write.table(x = data.frame(Seg_Run_SP_JKchrom_summary$JKchrom,Seg_Run_SP_JKchrom_summary$chrom_length,Seg_Run_SP_JKchrom_summary$tm),file = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/JKResults/Seg_Run_EP_JKchrom_sum_tm_",est$min_l[i],"_",est$exclude[i],".jin"),quote = F,row.names = F,col.names = F)
+
+  system(paste0("~/DATES/src/./dowtjack -i /mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/JKResults/Seg_Run_EP_JKchrom_sum_tm_",est$min_l[i],"_",est$exclude[i],".jin -m ",Seg_Run_SP_JKchrom_mean$tm," -o /mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/JKResults/Seg_Run_EP_JKchrom_sum_tm_",est$min_l[i],"_",est$exclude[i],".jout"))
+
+  tm_SE_est_SP <- read.table(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/JKResults/Seg_Run_EP_JKchrom_sum_tm_",est$min_l[i],"_",est$exclude[i],".jout"))
+  Seg_Run_SP_JKchrom_mean_out[[i]] <- Seg_Run_SP_JKchrom_mean %>% mutate(mean_JK = tm_SE_est_SP[1,1],se_JK = tm_SE_est_SP[1,2])
+
+}
+
+SP_Seg_anno <- do.call("rbind",Seg_Run_SP_JKchrom_mean_out) %>%
+  mutate(LL = -LL,min_l = as.factor(min_l)) %>%
+  dplyr::select(tm,mean_JK,se_JK,tm_lower,tm_upper,LL,map,min_l,exclude)  %>% filter(map == "Shared_Map")
+
+write.csv(SP_Seg_anno,"/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/Results/All_Seg_SP_res_merged_Seg_Run_SP_annotated.csv",quote = F,row.names = F)
+```
+
+## Estimating Jackknife se by chrom for EP
+
+This seems to return strange SE where the estimated mean is not found in the range of the jackknifed values
+
+```{r eval=T,echo=F, result='hide'}
+JK_segments <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_archaicadmixtureAPX_hs37mMask35to99.csv.xz") %>%
+  filter(chrom != "X") %>%
+  group_by(chrom) %>% dplyr::summarize(chrom_start = min(pos),chrom_end = max(pos)) %>% mutate(chrom_length = chrom_end - chrom_start)
+
+JK_ACov <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Coancestry_Curves_Dating/ACov_Datinf_asc.snp",sep=" ",header = F) %>% 
+  dplyr::select(V1,V2) %>% group_by(V1) %>% dplyr::summarize(n_pos = n())
+
+
+ACov_Run_EP_JKchrom <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Data_JKchrom/Results/All_ACov_EP_res_merged_ACov_Run_EP_JKchrom.csv")
+
+ACov_Run_EP  <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_Data_10_10_steps/Results/All_ACov_EP_res_merged_ACov_Run_EP.csv") %>% 
+  mutate(exclude2 = ifelse(exclude == "", "All Data",ifelse(startsWith(exclude,"BKBB7240_BKF6620"), "EarlyOoA Excluded",ifelse(exclude == "OaseNew","Oase Excluded",ifelse(startsWith(exclude,"OaseNew_PM1"),"Only EarlyOoA w/o Oase","Only EarlyOoA"))))) %>%   
+  filter(min_l == 0.02, weighted == "yes", 
+         truncation == "estimated_truncation",
+         map == "Shared_Map",
+         exclude2 %in% c("EarlyOoA Excluded")) %>% filter(value0 == 0)
+
+ACov_Run_EP_JKchrom_summary <- ACov_Run_EP_JKchrom %>% group_by(JKchrom,exclude) %>% filter(value0 == 0) %>% ungroup() %>% inner_join(.,JK_ACov,by=c("JKchrom"="V1"))
+
+## estimate SE tm 
+
+write.table(x = data.frame(ACov_Run_EP_JKchrom_summary$JKchrom,ACov_Run_EP_JKchrom_summary$n_pos,ACov_Run_EP_JKchrom_summary$Var2),"~/EMH_Introgression_Project/Introgression_Detection/Coancestry_Curves_Dating/ACov_Run_EP_JKchrom_sum_tm.jin",quote = F,row.names = F,col.names = F)
+
+system(paste0("~/DATES/src/./dowtjack -i ~/EMH_Introgression_Project/Introgression_Detection/Coancestry_Curves_Dating/ACov_Run_EP_JKchrom_sum_tm.jin -m ",ACov_Run_EP$Var2," -o ~/EMH_Introgression_Project/Introgression_Detection/Coancestry_Curves_Dating/ACov_Run_EP_JKchrom_sum_tm.jout"))
+
+tm_SE_est_EP <- read.table("~/EMH_Introgression_Project/Introgression_Detection/Coancestry_Curves_Dating/ACov_Run_EP_JKchrom_sum_tm.jout")
+
+## estimate SE td 
+
+write.table(x = data.frame(ACov_Run_EP_JKchrom_summary$JKchrom,ACov_Run_EP_JKchrom_summary$n_pos,ACov_Run_EP_JKchrom_summary$Var1),"~/EMH_Introgression_Project/Introgression_Detection/Coancestry_Curves_Dating/ACov_Run_EP_JKchrom_sum_td.jin",quote = F,row.names = F,col.names = F)
+
+system(paste0("~/DATES/src/./dowtjack -i ~/EMH_Introgression_Project/Introgression_Detection/Coancestry_Curves_Dating/ACov_Run_EP_JKchrom_sum_td.jin -m ",as.numeric(ACov_Run_EP$Var1)," -o ~/EMH_Introgression_Project/Introgression_Detection/Coancestry_Curves_Dating/ACov_Run_EP_JKchrom_sum_td.jout"))
+
+td_SE_est_EP <- read.table("~/EMH_Introgression_Project/Introgression_Detection/Coancestry_Curves_Dating/ACov_Run_EP_JKchrom_sum_td.jout")
+
+```
+
+
+Estimating it from the range of LL being bigger than -2
+
+
+```{r eval=T,echo=F, result='hide'}
+ACov_Run_EP  <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/Results/All_ACov_EP_res_merged_ACov_Run_EP.csv") %>% 
+  mutate(exclude2 = ifelse(exclude == "", "All Data",ifelse(startsWith(exclude,"BKBB7240_BKF6620"), "EarlyOoA Excluded",ifelse(exclude == "OaseNew","Oase Excluded",ifelse(startsWith(exclude,"OaseNew_PM1"),"Only EarlyOoA w/o Oase","Only EarlyOoA"))))) 
+  group_by(truncation,exclude,min_l,map,weighted) %>% filter(value0 > -101) 
+
+write.csv(x=ACov_Run_EP,file = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis_res_updated_red/Fit_data_tm_step_1_td_step_1/Results/All_ACov_EP_res_merged_ACov_Run_EP_reduced.csv",quote = F,row.names = F)
+
+ACov_Run_EP_summary <- ACov_Run_EP %>% group_by(truncation,exclude,min_l,map,weighted) %>% filter(value0 == 0) %>% ungroup()
+
+ACov_Run_EP_conditioned <- inner_join(ACov_Run_EP,ACov_Run_EP_summary[,c("truncation","exclude2","weighted","Var2")],
+                                      by=c("truncation"="truncation","exclude2"="exclude2","weighted"="weighted","Var2"="Var2")) 
+
+ACov_Run_EP_conditioned_summary <- ACov_Run_EP_conditioned %>% filter(value0 > -2) %>%
+  group_by(truncation,exclude,min_l,map,weighted) %>% 
+  dplyr::summarize(tm_mean = mean(Var2),tm_min = min(Var2),tm_max = max(Var2),td_mean = mean(Var1),td_min = min(Var1),td_max = max(Var1)) %>% ungroup() %>%
+  dplyr::select(truncation,exclude,min_l,map,weighted,tm_mean,tm_min,tm_max,td_mean,td_min,td_max) %>%
+  inner_join(ACov_Run_EP_summary,.) %>% dplyr::select(!exclude) %>% dplyr:: rename(exclude = exclude2)
+
+ACov_Run_EP_summary <- ACov_Run_EP %>% filter(value0 > -2) %>% group_by(truncation,exclude,min_l,map,weighted) %>% 
+  dplyr::summarize(tm_mean = mean(Var2),tm_min = min(Var2),tm_max = max(Var2),td_mean = mean(Var1),td_min = min(Var1),td_max = max(Var1)) %>% ungroup() %>%
+  dplyr::select(truncation,exclude,min_l,map,weighted,tm_mean,tm_min,tm_max,td_mean,td_min,td_max) %>%
+  inner_join(ACov_Run_EP_summary,.) %>% dplyr::select(!exclude) %>% dplyr:: rename(exclude = exclude2)
+
+P_LL_td_conditioned_tm <- ACov_Run_EP_conditioned %>% 
+  mutate(weighted = ifelse(weighted == "yes","weighted equally","unweighted")) %>%
+  ggplot(.,aes(x=Var1,y=value0,color = truncation)) +
+    geom_line() +
+    facet_wrap(exclude2~weighted,scales = "free",ncol = 2) +
+    geom_hline(yintercept = -2) +
+    coord_cartesian(expand = F,ylim = c(-20,2))
+
+
+
+```
+
+
+

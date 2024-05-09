@@ -1,0 +1,460 @@
+---
+title: "Defining genetic population clusters using the 1240k sites"
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Defining genetic population clusters
+
+For our analysis we need to group individuals for e.g. get frequencies of Neandertal ancestry. We can do this by time. For this we rely on radiocarbon dates. But we can also do it for populations. To define population on a continental or sub-continental level one could simply take the sampling location. But since people tend to move around during (pre-) history we know that people at the same sample location over time are not necessarily genetically close. Hence we are grouping individuals using their genetic information. To do that efficiently we use sites of the 1240k array which is especially good in capturing in-human diversity (but bad for Archaic ancestry). We use the genotype likelihoods provided by admixfrog for ancient individuals (here we take the genotype with the highest LH) and the genotypes given for the SGDP individuals, to calculate all pairwise outgroup F3 statistics with MButi as the outgroup. F3's for all SGDP individuals are done on their pre-assigned SGDP populations.
+
+## Functions
+
+```{r eval=T,echo=F, result='hide'}
+suppressPackageStartupMessages({
+library(reshape2) 
+library(dendextend)
+library(paletteer)
+library(tidyverse)
+library(viridis)
+library(ggrepel)})
+
+# folder
+folder_path = "~/EMH_Introgression_Project/Introgression_Detection/Paper_Figures/Supplement/"
+
+'%notin%' <- Negate('%in%')
+
+PAM_check_k<- function(F3_matrix,max_k,gap_stat=F){
+  
+  x1 <- fviz_nbclust(F3_matrix, pam, method = "silhouette",k.max = max_k,nboot = 100)
+  x2 <- fviz_nbclust(F3_matrix, pam, method = "wss",k.max = max_k,nboot = 100)
+  if(gap_stat == T){
+    x3 <- fviz_nbclust(F3_matrix, pam, method = "gap_stat",k.max = max_k,nboot = 100)
+    return(list(x1,x2,x3))    
+  }
+  else{
+    return(list(x1,x2))  
+  }
+  
+}
+
+PAM_check_k<- function(F3_matrix,max_k,gap_stat=F){
+  
+  x1 <- fviz_nbclust(F3_matrix, pam, method = "silhouette",k.max = max_k,nboot = 100)
+  x2 <- fviz_nbclust(F3_matrix, pam, method = "wss",k.max = max_k,nboot = 100)
+  if(gap_stat == T){
+    x3 <- fviz_nbclust(F3_matrix, pam, method = "gap_stat",k.max = max_k,nboot = 100)
+    return(list(x1,x2,x3))    
+  }
+  else{
+    return(list(x1,x2))  
+  }
+  
+}
+
+kmeans_check_k<- function(F3_matrix,max_k,gap_stat=F){
+  
+  x1 <- fviz_nbclust(F3_matrix, kmeans, method = "silhouette",k.max = max_k,nboot = 100)
+  x2 <- fviz_nbclust(F3_matrix, kmeans, method = "wss",k.max = max_k,nboot = 100)
+  if(gap_stat == T){
+    x3 <- fviz_nbclust(F3_matrix, kmeans, method = "gap_stat",k.max = max_k,nboot = 100)
+    return(list(x1,x2,x3))    
+  }
+  else{
+    return(list(x1,x2))  
+  }
+  
+}
+
+MDS_with_PAM_clusters <- function(F3_matrix,F3_matrix_dis,k,only_cluster=F){
+  F3_MDS_frags <- as.data.frame(cmdscale(
+    as.dist(F3_matrix_dis),
+    k=10,eig = T)$points)
+  
+  pam_fit <- cluster::pam(
+    dist(F3_matrix,method = "euclidean"),
+    #F3_matrix,
+    diss = TRUE, k = k)
+  
+  F3_MDS_frags$cluster <- pam_fit$clustering
+  
+  F3_MDS_frags_anno <- F3_MDS_frags %>% mutate(sample_name=colnames(F3_matrix)) %>%
+    inner_join(.,Joint_Meta,by=c("sample_name"="F3_pop_annotation")) %>%
+    filter(duplicated(sample_name) == FALSE)
+  
+  MDS_clustered <- ggplot(data=F3_MDS_frags_anno, aes(x=V1, y=V2,color=as.factor(cluster),label= sample_name)) +
+    geom_point() +
+    xlab("K1") +
+    ylab("K2") +
+    geom_text(hjust=0, vjust=0) +
+    theme(legend.position = "none")
+  if(only_cluster == T){
+    return(F3_MDS_frags_anno[,c("sample_name","cluster")])
+  }
+  else{
+    return(MDS_clustered)
+  }
+  
+}
+
+MDS_with_kmeans_clusters <- function(F3_matrix,F3_matrix_dis,k,only_cluster=F){
+  F3_MDS_frags <- as.data.frame(cmdscale(
+    as.dist(F3_matrix_dis),
+    k=10,eig = T)$points)
+  
+  kmeans_fit <- kmeans(
+    F3_matrix,centers = k)
+  
+  F3_MDS_frags$cluster <- kmeans_fit$cluster
+  
+  F3_MDS_frags_anno <- F3_MDS_frags %>% mutate(sample_name=colnames(F3_matrix)) %>%
+    inner_join(.,Joint_Meta,by=c("sample_name"="F3_pop_annotation")) %>%
+    filter(duplicated(sample_name) == FALSE)
+  
+  MDS_clustered <- ggplot(data=F3_MDS_frags_anno, aes(x=V1, y=V2,color=as.factor(cluster),label= sample_name)) +
+    geom_point() +
+    xlab("K1") +
+    ylab("K2") +
+    geom_text(hjust=0, vjust=0) +
+    theme(legend.position = "none")
+  if(only_cluster == T){
+    return(F3_MDS_frags_anno[,c("sample_name","cluster")])
+  }
+  else{
+    return(MDS_clustered)
+  }
+  
+}
+
+HC_Dendrogram <- function(F3_matrix_dis,max_tree_hight=NULL,k=NULL,only_cluster=F){
+  hc <- hclust(as.dist(F3_matrix_dis))
+  dend_prunned <- as.dendrogram(hc)
+  
+  
+  cut_tree_at = max_tree_hight
+  k_clust = k
+  
+  if((is.null(cut_tree_at) && is.null(k_clust))){
+    avg_col_dend <- as.dendrogram(hc) %>% 
+      dendextend::set("branches_lwd", 3) 
+    
+  }
+  if(is.null(k_clust) && !is.null(cut_tree_at)) {
+    avg_col_dend <- as.dendrogram(hc) %>% dendextend::color_branches(h = cut_tree_at,) %>%
+      dendextend::set("branches_lwd", 3) %>% dendextend::color_labels(h = cut_tree_at)
+  }
+  if(is.null(cut_tree_at) && !is.null(k_clust)) {
+    avg_col_dend <- as.dendrogram(hc) %>% dendextend::color_branches(k = k_clust) %>%
+      dendextend::set("branches_lwd", 3) %>% dendextend::color_labels(k = k_clust)
+  }
+  if(only_cluster == T && !is.null(cut_tree_at)){
+    cluster_groups = data.frame(group = cutree(hc, k = NULL, h = cut_tree_at),pop = names(cutree(hc, k = NULL, h = cut_tree_at)))
+    return(cluster_groups)
+  }
+  if(only_cluster == T && !is.null(k_clust)){
+    cluster_groups = data.frame(group = cutree(hc, k = k_clust, h = NULL),pop = names(cutree(hc, k = k_clust, h = NULL)))
+    return(cluster_groups)
+  }else{
+    plot(avg_col_dend)
+    abline(h=cut_tree_at)
+  }
+}
+
+reorder_F3 <- function(F3_dis){
+  dd <- as.dist(F3_dis)
+  hc <- hclust(dd)
+  F3_dis <-F3_dis[hc$order, hc$order]
+}
+
+
+```
+
+## Read in Data
+
+The calculations for all pairwise F3 are done using ADMIXTOOLS2 (in the script home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/Analysis/Calculate_F3_on_1240k.R). We only consider sites where at least half of the ancient individuals have SNP information. The F2 from which all the F3's are calculated are done so with parameters:
+ * maxmiss = 1
+ * auto_only = T
+ * adjust_pseudohaploid = FALSE
+ * fst=FALSE
+ * apply_corr=FALSE
+ 
+We construct a n x n matrix of pairwise F3's distances. The distance is given by $max(F_3) - F_3$, the diagonal is put to zero. We remove genetically closely related individuals (here we only keep the son1 of the Afanasievo family).
+
+```{r eval=T,echo=F, result='hide'}
+# sample meta information
+Joint_Meta <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data.csv",sep = ",") %>% mutate(F3_pop_annotation = ifelse(ML_BP_Mean == 0 ,pop,sample_name)) 
+Joint_Meta$pop[Joint_Meta$pop == "Sahrawi"] = "Saharawi"
+Joint_Meta$F3_pop_annotation[Joint_Meta$F3_pop_annotation == "Sahrawi"] = "Saharawi"
+Joint_Meta = Joint_Meta %>%  mutate(ID = c(Joint_Meta$pop[Joint_Meta$ML_BP_Mean == 0],Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]))
+
+# All together
+
+res_f3_gtLH_Autosomes <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Analysis/F3_stats/admixfrog0.7/Autosomes/res_f3_AF_gtLH_A1240k_Shared_Map.csv")
+res_f3_gtLH_Autosomes[res_f3_gtLH_Autosomes == "Salkhit"] <- "SalkhitArchAdm"
+res_f3_gtLH_Autosomes_matrix_full = res_f3_gtLH_Autosomes %>% dplyr::select(c(pop2,pop3,est)) %>% pivot_wider(names_from = pop3, values_from = est) %>% column_to_rownames(.,"pop2") %>% as.matrix()
+res_f3_gtLH_Autosomes_red <-  res_f3_gtLH_Autosomes %>% filter(pop2 %notin% c("AfanasievoSon2","AfanasievoFather","AfanasievoMother"),pop3 %notin% c("AfanasievoSon2","AfanasievoFather","AfanasievoMother"))
+res_f3_gtLH_Autosomes_matrix_red = res_f3_gtLH_Autosomes_red %>% dplyr::select(c(pop2,pop3,est)) %>% pivot_wider(names_from = pop3, values_from = est) %>% column_to_rownames(.,"pop2") %>% as.matrix()
+
+res_f3_gtLH_Autosomes_matrix_full_sim <- res_f3_gtLH_Autosomes_matrix_full
+diag(res_f3_gtLH_Autosomes_matrix_full_sim) <- 0
+res_f3_gtLH_Autosomes_matrix_full_dis <- max(res_f3_gtLH_Autosomes_matrix_full_sim) - res_f3_gtLH_Autosomes_matrix_full_sim
+diag(res_f3_gtLH_Autosomes_matrix_full_dis) <- 0
+
+res_f3_gtLH_Autosomes_matrix_red_sim <- res_f3_gtLH_Autosomes_matrix_red
+diag(res_f3_gtLH_Autosomes_matrix_red_sim) <- 0
+res_f3_gtLH_Autosomes_matrix_red_dis <- max(res_f3_gtLH_Autosomes_matrix_red_sim)- res_f3_gtLH_Autosomes_matrix_red_sim
+diag(res_f3_gtLH_Autosomes_matrix_red_dis) <- 0
+```
+ 
+## Heatmap
+
+We can visualize the resulting matrix in a heatmap
+
+```{r eval=T,echo=F, result='hide'}
+F3mat <- reorder_F3(res_f3_gtLH_Autosomes_matrix_full_dis)
+melted_F3_matrix <- melt(F3mat)
+melted_F3_matrix_anno <- melted_F3_matrix %>% inner_join(.,Joint_Meta[,c("ID","SGDP_Superpop","ML_BP_Mean")],by=c("Var1"="ID")) %>% dplyr::rename(Var1_SGDP_Superpop = SGDP_Superpop,Var1_ML_BP_Mean = ML_BP_Mean) %>%
+  inner_join(.,Joint_Meta[,c("ID","SGDP_Superpop","ML_BP_Mean")],by=c("Var2"="ID")) %>% dplyr::rename(Var2_SGDP_Superpop = SGDP_Superpop,Var2_ML_BP_Mean = ML_BP_Mean) %>% distinct() %>%
+  filter(Var1_SGDP_Superpop != "Africa" & Var2_SGDP_Superpop != "Africa")
+melted_F3_matrix_anno = melted_F3_matrix_anno[ order(match(melted_F3_matrix_anno$Var1, melted_F3_matrix$Var1)), ]
+melted_F3_matrix_anno$Var1 <- ordered(melted_F3_matrix_anno$Var1, levels = levels(melted_F3_matrix$Var1))
+melted_F3_matrix_anno = melted_F3_matrix_anno[ order(match(melted_F3_matrix_anno$Var2, melted_F3_matrix$Var2)), ]
+melted_F3_matrix_anno$Var2 <- ordered(melted_F3_matrix_anno$Var2, levels = levels(melted_F3_matrix$Var2))
+melted_F3_matrix_anno$value <- ifelse(melted_F3_matrix_anno$Var1 == melted_F3_matrix_anno$Var2 , NA, melted_F3_matrix_anno$value)
+colnames(melted_F3_matrix_anno)[colnames(melted_F3_matrix_anno) == "value"] <- "max(F3) - F3"
+
+
+ggHeatmap <- ggplot(data = melted_F3_matrix_anno, aes(x=Var1, y=Var2, fill=`max(F3) - F3`)) + 
+  geom_tile(color = "white")+
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = mean(melted_F3_matrix_anno$`max(F3) - F3`,na.rm = T), limit = c(min(melted_F3_matrix_anno$`max(F3) - F3`,na.rm = T),max(melted_F3_matrix_anno$`max(F3) - F3`,na.rm = T)), space = "Lab")+
+  geom_point(data= melted_F3_matrix_anno, aes(x=Var1, y=Var2),alpha=0) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, 
+                                   size = 8, hjust = 1),
+        axis.text.y = element_text( vjust = 1, 
+                                    size = 8, hjust = 1)) +
+  xlab("") + 
+  ylab("") +
+  coord_fixed()
+
+ggHeatmap
+
+ggsave(filename = paste(folder_path,"/Defining_genetic_populations_F3_dist_ggHeatmap_using_1240k.png",sep=""),ggHeatmap,device = "png",width = 14,height =  14)
+```
+
+
+## Clustering
+
+We are using hierarchical clustering to form groups out of the F3 distances between individuals.
+
+### Predefin clusters
+
+From literature we know that there are already some either very distinct clusters, individuals that did not contribute to later times or that contribute equally to most non-African populations today. We assign these individuals predefined clusters. 
+
+ * Supercluster = Oceania; cluster = Oceania: Papuans, Bougainville, Australia and Leang Panninge
+ * Supercluster = Africa ; cluster = Africa: all sub-Saharan Africans
+ * Supercluster = Africa; cluster = North-Africa: Saharawi, Mozabite
+ * Supercluster = EarlyOoA, cluster = EarlyOoA: Oase, ZlatyKun, BKBB7240, BKCC7335, BKF6620, UstIshim
+
+We exclude these predefined clusters form our hierarchical clustering
+
+```{r eval=T,echo=F, result='hide'}
+Oceania_cluster <- data.frame(samples = c("Papuan","Australian","Bougainville","LeangPanninge"),Supercluster= "Oceania",cluster= "Oceania")
+
+Not_clustered <- data.frame(samples = c("OaseNew","ZlatyKunShotgun","BKBB7240","BKCC7335","BKF6620","UstIshim"),Supercluster= "EarlyOoA",cluster= "EarlyOoA")
+
+Africa <- data.frame(samples = c("Saharawi","Mozabite"),Supercluster= "Africa",cluster= "North_Africa")
+
+exclude_sample <- rownames(res_f3_gtLH_Autosomes_matrix_red)[rownames(res_f3_gtLH_Autosomes_matrix_red_dis) %notin% c(Oceania_cluster$samples,Not_clustered$samples,Africa$samples)]
+```
+
+### Superclusters
+
+First we define two superclusters as continental clusters from the remaining individuals.
+The resulting cluster are:
+ * West-Eurasia and Central Asia
+ * Asia and America
+
+```{r eval=T,echo=F, result='hide'}
+HC_Dendrogram(res_f3_gtLH_Autosomes_matrix_red_dis[exclude_sample,exclude_sample],k = 2)
+
+hc_Supercluster_ALL <- HC_Dendrogram(res_f3_gtLH_Autosomes_matrix_red_dis[exclude_sample,exclude_sample],k=2,only_cluster = T)
+colnames(hc_Supercluster_ALL) <- c("Supercluster","samples")
+hc_Supercluster_ALL$Supercluster[hc_Supercluster_ALL$Supercluster == hc_Supercluster_ALL$Supercluster[hc_Supercluster_ALL$samples == "French"]] <- "WEurCAS"
+hc_Supercluster_ALL$Supercluster[hc_Supercluster_ALL$Supercluster == hc_Supercluster_ALL$Supercluster[hc_Supercluster_ALL$samples == "Han"]] <- "Americas&Asia"
+
+
+```
+
+### Clusters
+
+Then we define 9 more population clusters. We check for consistency with previous studies. The resulting clusters are broad since there is no point in clusters containing only one or two individuals for frequency estimats.
+The clusters are:
+ * Siberia&Americas
+ * EAS
+ * WEur
+ * SA
+ * AncientEAS
+ * Satsurblia
+ * ANS (Ancient north Siberians)
+ * ANS (Ancient north Eurasians)
+ * postLGM-WEurHG (post LGM west Eurasian Hunter Gatherers)
+ * preLGM-WEurHG (pre LGM west Eurasian Hunter Gatherers)
+ * SWA (South-West Asians)
+ 
+The Afanasievo family is classified as Yamnaya.
+ 
+
+```{r eval=T,echo=F, result='hide'}
+HC_Dendrogram(res_f3_gtLH_Autosomes_matrix_red_dis[exclude_sample,exclude_sample],k = 10)
+hc_cluster_ALL <- HC_Dendrogram(res_f3_gtLH_Autosomes_matrix_red_dis[exclude_sample,exclude_sample],k = 10,only_cluster = T)
+
+
+colnames(hc_cluster_ALL) <- c("cluster","samples")
+
+
+hc_cluster_ALL$cluster[hc_cluster_ALL$cluster == hc_cluster_ALL$cluster[hc_cluster_ALL$samples == "Han"]] <- "EAS"
+hc_cluster_ALL$cluster[hc_cluster_ALL$cluster == hc_cluster_ALL$cluster[hc_cluster_ALL$samples == "French"]] <- "WEur"
+hc_cluster_ALL$cluster[hc_cluster_ALL$cluster == hc_cluster_ALL$cluster[hc_cluster_ALL$samples == "Bengali"]] <- "SA"
+hc_cluster_ALL$cluster[hc_cluster_ALL$cluster == hc_cluster_ALL$cluster[hc_cluster_ALL$samples == "Tianyuan"]] <- "AncientEAS"
+hc_cluster_ALL$cluster[hc_cluster_ALL$cluster == hc_cluster_ALL$cluster[hc_cluster_ALL$samples == "Satsurblia"]] <- "Satsurblia"
+hc_cluster_ALL$cluster[hc_cluster_ALL$cluster == hc_cluster_ALL$cluster[hc_cluster_ALL$samples == "AfontovaGora3"]] <- "ANE"
+hc_cluster_ALL$cluster[hc_cluster_ALL$cluster == hc_cluster_ALL$cluster[hc_cluster_ALL$samples == "Yana1"]] <- "ANS"
+hc_cluster_ALL$cluster[hc_cluster_ALL$cluster == hc_cluster_ALL$cluster[hc_cluster_ALL$samples == "Villabruna"]] <- "postLGM-WEurHG"
+hc_cluster_ALL$cluster[hc_cluster_ALL$cluster == hc_cluster_ALL$cluster[hc_cluster_ALL$samples == "SunghirI"]] <- "preLGM-WEurHG"
+hc_cluster_ALL$cluster[hc_cluster_ALL$cluster == hc_cluster_ALL$cluster[hc_cluster_ALL$samples == "Balochi"]] <- "SWA"
+hc_cluster_ALL <-  inner_join(hc_cluster_ALL,hc_Supercluster_ALL,by="samples")
+
+hc_cluster_ALL <- rbind(hc_cluster_ALL,Oceania_cluster,Not_clustered,Africa,AFfamily = data.frame(samples=c("AfanasievoSon2","AfanasievoFather","AfanasievoMother","AfanasievoSon1"),cluster= "Yamnaya",Supercluster= hc_cluster_ALL$Supercluster[hc_cluster_ALL$samples == "AfanasievoSon1"]))
+
+HC_Dendrogram(res_f3_gtLH_Autosomes_matrix_red_dis[hc_cluster_ALL$samples[hc_cluster_ALL$cluster == "EAS"],hc_cluster_ALL$samples[hc_cluster_ALL$cluster == "EAS"]],
+                                 k = 3)
+hc_cluster_Asia <- HC_Dendrogram(res_f3_gtLH_Autosomes_matrix_red_dis[hc_cluster_ALL$samples[hc_cluster_ALL$cluster == "EAS"],hc_cluster_ALL$samples[hc_cluster_ALL$cluster == "EAS"]],
+                                 k = 3,only_cluster = T)
+
+colnames(hc_cluster_Asia) <- c("cluster","samples")
+
+hc_cluster_ALL$cluster[hc_cluster_ALL$samples %in% hc_cluster_Asia$samples[hc_cluster_Asia$cluster == hc_cluster_Asia$cluster[hc_cluster_Asia$samples == "SpiritCave"]]] <- "Siberia&Americas"
+
+hc_cluster_ALL$cluster[hc_cluster_ALL$samples == "AfanasievoSon1"] <- "Yamnaya"
+
+hc_cluster_ALL <- hc_cluster_ALL %>% distinct()
+```
+
+
+## Plots of resulting clusters
+
+### Dendogram
+
+```{r eval=T,echo=F, result='hide'}
+
+cluster_color_broad_all = data.frame(clusterF3D_broad_all = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","North_Africa","Oceania","postLGM-WEurHG","preLGM-WEurHG","SA","Satsurblia","Siberia&Americas" ,"Sub-Sahara-Africa","SWA","WEur","Yamnaya"),
+                                 cluster_color = 
+                                   c("#009292FF","#FFCC00","#6DB6FFFF","#004949FF","#924900FF","#808080","#006DDBFF","#490092FF","#DB6D00FF","#920000FF","#FFB6DBFF","#24FF24FF","#000000FF","#B66DFFFF","#FF6DB6FF","#B6DBFFFF"))
+
+Supercluster_color = data.frame(SuperclusterF3D = c("Africa","Americas&Asia","EarlyOoA","Oceania","WEurCAS"),Supercluster_color = c("#000000FF","#924900FF","#004949FF","#006DDBFF","#FF6DB6FF"))
+
+pacman::p_load(tidyverse, ggdendro, RColorBrewer, plotly)
+
+dendrogram <- as.dendrogram(hclust(as.dist(res_f3_gtLH_Autosomes_matrix_full_dis)))
+dendrogram_data <- dendro_data(dendrogram)
+dendrogram_segments <- dendrogram_data$segments 
+
+dendrogram_ends <- dendrogram_segments %>%
+  filter(yend == 0) %>% # filter for terminal dendrogram ends
+  left_join(.,dendrogram_data$labels, by = "x") %>% # .$labels contains the row names from dist_matrix (i.e., sample_name)
+  dplyr::rename(sample_name = label) %>% inner_join(.,hc_cluster_ALL,by=c("sample_name"="samples")) %>%
+  inner_join(.,Supercluster_color,by=c("Supercluster"="SuperclusterF3D")) %>%
+  inner_join(.,cluster_color_broad_all,by=c("cluster"="clusterF3D_broad_all"))
+
+
+P_Dendrogram_Superclusters <- ggplot(segment(dendrogram_data)) + 
+  geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + 
+  geom_segment(data = dendrogram_ends,
+               aes(x=x, y=y.x, xend=xend, yend=yend, color = as.factor(Supercluster))) + 
+  geom_text(aes(x = x, y = y, label = label, angle = 90, hjust = 1), data= label(dendrogram_data)) +
+  scale_y_continuous(expand = c(0.3, 0)) +
+  scale_color_manual(name = "Genetic Superclusters",labels = Supercluster_color$SuperclusterF3D, values = Supercluster_color$Supercluster_color) +
+  theme_dendro() 
+P_Dendrogram_Superclusters
+
+P_Dendrogram_clusters <- ggplot(segment(dendrogram_data)) + 
+  geom_segment(aes(x = x, y = y, xend = xend, yend = yend)) + 
+  geom_segment(data = dendrogram_ends,
+               aes(x=x, y=y.x, xend=xend, yend=yend, color = as.factor(cluster))) + 
+  geom_text(aes(x = x, y = y, label = label, angle = 90, hjust = 1), data= label(dendrogram_data)) +
+  scale_y_continuous(expand = c(0.3, 0)) +
+  scale_color_manual(name = "Genetic Clusters",labels = cluster_color_broad_all$clusterF3D_broad,values = cluster_color_broad_all$cluster_color) +
+  theme_dendro() 
+P_Dendrogram_clusters
+
+ggsave(filename = paste(folder_path,"/Defining_genetic_populations_F3_dist_Dendrogram_clusters_using_1240k.png",sep=""),P_Dendrogram_clusters,device = "png",width = 14,height =  14)
+ggsave(filename = paste(folder_path,"/Defining_genetic_populations_F3_dist_Dendrogram_Superclusters_using_1240k.png",sep=""),P_Dendrogram_Superclusters,device = "png",width = 14,height =  14)
+
+```
+
+### MDS
+
+```{r eval=T,echo=F, result='hide'}
+F3_MDS_frags <- as.data.frame(cmdscale(
+  as.dist(res_f3_gtLH_Autosomes_matrix_full_dis),
+  k=10,eig = T)$points)
+
+
+F3_MDS_frags_anno <- F3_MDS_frags %>% mutate(sample_name=colnames(res_f3_gtLH_Autosomes_matrix_full)) %>%
+  inner_join(.,Joint_Meta,by=c("sample_name"="F3_pop_annotation")) %>% filter(duplicated(sample_name) == FALSE) %>% 
+  inner_join(.,hc_cluster_ALL,by=c("sample_name"="samples"))
+
+write.csv(F3_MDS_frags_anno,"~/EMH_Introgression_Project/Introgression_Detection/Analysis/Genetic_clustering_F3_MDS_anno.csv",quote = F,row.names = F)
+
+MDS_Supercluster <- F3_MDS_frags_anno %>% filter(sample_name != "OaseNew") %>%
+  ggplot(data= ., aes(x=V1, y=V2,color=Supercluster,label= sample_name,shape=Supercluster)) +
+  geom_point() +
+  xlab("K1") +
+  ylab("K2") +
+  scale_color_manual(name = "Genetic Superclusters",breaks = Supercluster_color$SuperclusterF3D,labels = Supercluster_color$SuperclusterF3D, values = Supercluster_color$Supercluster_color) +
+  scale_shape_manual(name = "Genetic Superclusters",breaks = Supercluster_color$SuperclusterF3D,labels = Supercluster_color$SuperclusterF3D,values= c(1:length(unique(Supercluster_color$Supercluster_color))))+
+  geom_text_repel(data= F3_MDS_frags_anno[F3_MDS_frags_anno$ML_BP_Mean > 0,], aes(label=sample_name),max.overlaps = 30,show.legend = FALSE) 
+
+MDS_Supercluster
+
+MDS_cluster <- F3_MDS_frags_anno  %>%
+  ggplot(data= ., aes(x=V1, y=V2,color=cluster,shape=cluster)) +
+  geom_point() +
+  xlab("K1") +
+  ylab("K2") +
+  scale_color_manual(name = "Genetic Clusters",breaks = cluster_color_broad_all$clusterF3D_broad,labels = cluster_color_broad_all$clusterF3D_broad,values = cluster_color_broad_all$cluster_color) +
+  scale_shape_manual(name = "Genetic Clusters",breaks = cluster_color_broad_all$clusterF3D_broad,labels = cluster_color_broad_all$clusterF3D_broad,values= c(1:length(unique(cluster_color_broad_all$cluster_color))))+
+  geom_text_repel(data= F3_MDS_frags_anno[F3_MDS_frags_anno$ML_BP_Mean > 0,], aes(label=sample_name),max.overlaps = 30,show.legend = FALSE)
+MDS_cluster
+
+ggsave(filename = paste(folder_path,"/Defining_genetic_populations_F3_dist_MDS_clusters_using_1240k.png",sep=""),MDS_cluster,device = "png",width = 14,height =  14)
+ggsave(filename = paste(folder_path,"/Defining_genetic_populations_F3_dist_MDS_Superclusters_using_1240k.png",sep=""),MDS_Supercluster,device = "png",width = 14,height =  14)
+
+colnames(hc_cluster_ALL) <- c("clusterF3D_broad","samples","SuperclusterF3D")
+Joint_Meta <- left_join(Joint_Meta,hc_cluster_ALL,by=c("F3_pop_annotation"="samples")) %>% distinct()
+Joint_Meta$clusterF3D_broad[is.na(Joint_Meta$clusterF3D)] <- "Sub-Sahara-Africa"
+Joint_Meta$SuperclusterF3D[is.na(Joint_Meta$SuperclusterF3D)] <- "Africa"
+
+write.csv(Joint_Meta,"~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clusters_using_1240k.csv",quote = F,row.names = F)
+
+```
+
+## Write output files
+
+```{r eval=F,echo=F, result='hide'}
+write.csv(Joint_Meta,"~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clustersF3d1240k.csv",quote = F,row.names = F)
+
+Joint_Meta2 <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clustersED.csv") %>% mutate(PCA_pops = ifelse(ML_BP_Mean == 0 ,pop,sample_name))
+Joint_Meta2 <- Joint_Meta2 %>% dplyr::distinct()
+Joint_Meta2 <- inner_join(Joint_Meta2,Joint_Meta[,c("sample_name","SuperclusterF3D","clusterF3D")],by="sample_name")
+
+write.csv(Joint_Meta2,"~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clusters_using_1240k.csv",quote = F,row.names = F)
+
+```
