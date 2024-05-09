@@ -1,0 +1,131 @@
+import pysam
+import csv
+from pybedtools import BedTool
+import csv
+import pybedtools
+import pandas as pd
+
+def _prepare_vcf_filter(wc):
+    vcf_path = config["SGDP"][wc.sample]["vcf"]
+    s = "{}".format(vcf_path)
+    return s
+
+def bed_from_anno_seg_file(input_file,filter_map_len,filter_target,filter_type):
+    df = pd.read_csv(input_file)
+
+    filtered_df = df[(df['map_len'] >= filter_map_len) & (df['target'].isin(filter_target)) & (df['type'].isin(filter_type) )]
+    selected_columns = ['chrom', 'pos', 'pos_end', 'frag_ID']
+    filtered_df = filtered_df[selected_columns]
+
+   # sorted_df = filtered_df.sort_values(by=['chrom', 'pos'], key=lambda x: x.apply(lambda y: int(y.strip('chrX'))))
+
+    bedtool_obj = pybedtools.BedTool.from_dataframe(filtered_df, sep='\t')
+    return bedtool_obj
+
+def bed_from_diagnostic_sites_file(input_file):
+    df = pd.read_csv(input_file,sep= ' ')
+    df1 = df.iloc[:, 0:2]
+
+    df1.columns =['chrom', 'end']
+    df1['start'] = df1['end'] -1
+    df1 = df1[["chrom","start","end"]]
+
+    bedtool_obj = pybedtools.BedTool.from_dataframe(df1, sep='\t')
+    return bedtool_obj
+
+
+def intersect_bed_files(positions_bed_file_object, intervals_bed_file_object):
+    # Load BED files using pybedtools
+    positions_bed = positions_bed_file_object
+    intervals_bed = intervals_bed_file_object
+
+    # Perform intersection and retain positions from the first BED file
+    intersected_bed = positions_bed.intersect(intervals_bed, wa=True, wb=True)
+
+    # Write the intersection results to the output BED file
+    return intersected_bed
+
+
+
+rule get_diagnostic_pileup:
+    input:
+        input_anno_segment_file = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz.anno",
+        input_file_diagnostic_sites = "Phylogenetic_fragment_analysis/informative_sites_Mbuti_Vi33.19_Altai_Chagyrskaya_Den3_chrom21.tab",
+        vcf_file= _prepare_vcf_filter
+    params:
+        filter_map_len = 0.05,
+        filter_target = ['NEA',"DEN"],
+        filter_type = ['state']
+    output:
+        diagnostic_pileup_file = "{Folder_name}/Diagnostic_sites/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/allSites/{sample}_{snpset}.rle{penalty}.tab"
+    run:
+
+        bed_file_segments = bed_from_anno_seg_file(input.input_anno_segment_file,float(params.filter_map_len),params.filter_target,params.filter_type)
+
+        bed_file_diagnostic_sites = bed_from_diagnostic_sites_file(input.input_file_diagnostic_sites)
+
+        bed_reader = intersect_bed_files(bed_file_diagnostic_sites,bed_file_segments)
+
+        # Open the VCF file
+        vcf = pysam.VariantFile(input.vcf_file, "rb")
+
+        # Create a dictionary to store the counts for each position
+
+        genotype_counts = {}
+        for row in bed_reader:
+            chrom = row[0]
+            pos_start = int(row[1])
+            pos_end = int(row[2])
+            identifier = row[6]
+            genotype_counts[(chrom, pos_start, pos_end, identifier)] = {'A': 0, 'C': 0, 'G': 0, 'T': 0}
+
+        # Iterate over each region in the BED file
+        for row in bed_reader:
+            chrom = row[0]
+            pos_start = int(row[1])
+            pos_end = int(row[2])
+            identifier = row[6]
+
+
+            # Iterate over reads overlapping the region
+            for record in vcf.fetch(chrom, pos_start, pos_end):
+                chrom = record.chrom
+                pos = record.pos
+                ref = record.ref
+                alts = record.alts
+
+                if not alts:
+                    genotype_counts[(chrom, pos_start, pos_end, identifier)][ref] += 2
+                else:
+                    genotype_counts[(chrom, pos_start, pos_end, identifier)][ref] += 1
+                    for alt in alts:
+                        genotype_counts[(chrom, pos_start, pos_end, identifier)][alt] += 1
+        vcf.close()
+
+        # Write the output table
+        with open(output.diagnostic_pileup_file, "w") as file:
+            writer = csv.writer(file, delimiter="\t")
+            writer.writerow(["chrom", "pos start", "pos end", "ID", "A", "C", "G", "T"])
+            for (chrom, pos_start, pos_end, identifier), gt_counts in genotype_counts.items():
+                writer.writerow([chrom, pos_start, pos_end, identifier] + [gt_counts["A"],gt_counts["C"],gt_counts["G"],gt_counts["T"]])
+
+
+
+
+rule match_diagnostic_pileup:
+    input:
+        input_anno_segment_file = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz.anno",
+        diagnostic_pileup_file = "{Folder_name}/Diagnostic_sites/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/allSites/{sample}_{snpset}.rle{penalty}.tab",
+        diagnostic_ref = "Phylogenetic_fragment_analysis/informative_sites_Mbuti_Vi33.19_Altai_Chagyrskaya_Den3_annotated_chrom21.tab",
+        bed_file = "admixfrogREF/bed/{snpset}.bed"
+    params:
+        filter_map_len = 0.05,
+        n_bootstrap = 100,
+        filter_target = ['NEA',"DEN"],
+        filter_type = ['state']
+    output:
+        diagnostic_match_file_raw = "{Folder_name}/Diagnostic_sites/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{DiagSites}/{sample}_{snpset}.rle{penalty}.match.xz",
+        diagnostic_match_file_sum = "{Folder_name}/Diagnostic_sites/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{DiagSites}/{sample}_{snpset}.rle{penalty}.match_summary.xz",
+        diagnostic_match_file_sum_TS_only = "{Folder_name}/Diagnostic_sites/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{DiagSites}/{sample}_{snpset}.rle{penalty}.match_summary_transversions_only.xz"
+    script:
+        "Phylogenetic_fragment_analysis/Diagnostic_matching.R"
