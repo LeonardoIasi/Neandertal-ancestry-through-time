@@ -1,0 +1,164 @@
+"""OVERVIEW STATS"""
+
+def _inputfiles_ave_cov(wc):
+    l = expand("{Folder_name}/samples/length_bin_{length_bin}/{sample}_{snpset}_VCF.in.xz",
+        Folder_name=Folder_name,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin)
+    return l
+
+rule ave_cov:
+    input:
+        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
+        cov = _inputfiles_ave_cov
+    output:
+        cov_stats = "{Folder_name}/stats/Sample_coverage_{panel}_length_bin_{length_bin}_{snpset}.cov.txt"
+
+    run:
+        split_char = str(wildcards.snpset)
+        print(split_char)
+        ref = pd.read_table(input.ref  ,sep=',' )
+        n_sites = len(ref.pos)
+        all_sample_name = list()
+        all_cov_mean = list()
+        all_cov_median = list()
+        all_n_sites_covered = list()
+        for i in input.cov:
+            str_x=i.split("/")
+            str_x = str_x[-1].split(f"_{split_char}")
+            all_sample_name.append(str_x[0])
+            cov = pd.read_table(i  ,sep=',' )
+            cov=cov.groupby(by=['chrom','pos'],as_index = False)['tref','talt'].agg('sum')
+            sites_cov = np.concatenate((np.array(cov.tref + cov.talt), np.repeat([0], (n_sites- len(np.array(cov.tref + cov.talt))), axis=0)), axis=0)
+            ave_cov_i  = np.mean(sites_cov)
+            median_cov_i  = np.median(sites_cov)
+            all_cov_mean.append(ave_cov_i)
+            all_cov_median.append(median_cov_i)
+            all_n_sites_covered.append(len(cov.pos))
+
+        D = dict()
+        D["sample_name"] = all_sample_name
+        D["ave_cov"] = all_cov_mean
+        D["median_cov"] = all_cov_median
+        D["n_sites_cov"] = all_n_sites_covered
+        cov_stats = pd.DataFrame.from_dict(D)
+        cov_stats.to_csv(output.cov_stats,sep="\t",index=False)
+
+def _inputfiles_ave_cont(wc):
+    l = expand("{Folder_name}/admixfrog/gtmode/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.cont.xz",
+        Folder_name=Folder_name,admf_params=wc.admf_params,bin_size=wc.bin_size,states=wc.states,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin,map=wc.map)
+    return l
+
+rule ave_cont:
+    input:
+        cont = _inputfiles_ave_cont
+    output:
+        cont_stats = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.cont.txt"
+
+    run:
+        split_char = wildcards.snpset
+        all_sample_name = list()
+        all_cont = list()
+        all_cont_error = list()
+        for i in input.cont:
+            str_x=i.split("/")
+            str_x = str_x[-1].split(f"_{split_char}")
+            all_sample_name.append(str_x[0])
+            cont = pd.read_table(i  ,sep=',' )
+            ave_con_i  = sum(cont.iloc[:,1]*cont.iloc[:,6])/sum(cont.iloc[:,6])
+            ave_error_cont_i = sum(cont.iloc[:,2]*cont.iloc[:,6])/sum(cont.iloc[:,6])
+            all_cont.append(ave_con_i)
+            all_cont_error.append(ave_error_cont_i)
+        D = dict()
+        D["sample_name"] = all_sample_name
+        D["ave_cont"] = all_cont
+        D["ave_cont_error"] = all_cont_error
+        cont_stats = pd.DataFrame.from_dict(D)
+        cont_stats.to_csv(output.cont_stats,sep="\t",index=False)
+
+def _inputfiles_states_stats(wc):
+    l = expand("{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.res2.xz",
+        Folder_name=Folder_name,admf_params=wc.admf_params,bin_size=wc.bin_size,states=wc.states,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin,map=wc.map)
+    return l
+
+rule ave_states:
+    input:
+        states = _inputfiles_states_stats
+    output:
+        states_stats = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.states_stats.txt"
+
+    run:
+        split_char = wildcards.snpset
+        n_states = len(wildcards.states.split("-"))
+        all_sample_name = list()
+        str_x=input.states[0].split("/")
+        str_x = str_x[-1].split(f"_{split_char}")
+        all_sample_name.append(str_x[0])
+        states_table = pd.read_table(input.states[0]  ,sep=',' )
+        for i in input.states[1:len(input.states)]:
+            str_x=i.split("/")
+            str_x = str_x[-1].split(f"_{split_char}")
+            print(str_x)
+            all_sample_name.append(str_x[0])
+            states_table = pd.concat([states_table,pd.read_table(i  ,sep=',' )])
+
+        states_table.insert(0, "sample", [x for x in all_sample_name for i in range(n_states)], allow_duplicates=True)
+        states_table.to_csv(output.states_stats,sep="\t",index=False)
+
+rule get_QC_table:
+    input:
+        Meta_table = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/SGDP_sample_info.csv",
+        Contamination_table = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.cont.txt",
+        Posterior_Ancestry_estimates_table = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.states_stats.txt",
+        Coverage_table = "{Folder_name}/stats/Sample_coverage_{panel}_length_bin_{length_bin}_{snpset}.cov.txt",
+        f4_ratios_table = "{Folder_name}/samples/length_bin_{length_bin}/f4r_{panel}_{snpset}_allele_state_long.csv",
+        #script_ = "get_QC_table.R"
+    params:
+        EMH = False
+    output:
+        QC_table_wide = "{Folder_name}/stats/{admf_params}/{states}/{map}/QC_{panel}_length_bin_{length_bin}_{bin_size}_{snpset}.wide_updated.csv",
+        QC_table_long = "{Folder_name}/stats/{admf_params}/{states}/{map}/QC_{panel}_length_bin_{length_bin}_{bin_size}_{snpset}.long_updated.csv"
+    script:
+        "get_QC_table.R"
+
+rule callable_genome_ind:
+    input:
+        bin =  "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz"
+    output:
+        covered_bed = "{Folder_name}/Coverage_Masker/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}_{min_cov}.covered.bed",
+        missing_bed = "{Folder_name}/Coverage_Masker/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}_{min_cov}.missing.bed"
+    script:
+        "get_callable_genome_ind.R"
+
+
+def _inputfiles_callable_genome_ind(wc):
+    l = expand("{Folder_name}/Coverage_Masker/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}_{min_cov}.covered.bed",
+        Folder_name=Folder_name,admf_params=wc.admf_params,bin_size=wc.bin_size,states=wc.states,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin,map=wc.map,min_cov=wc.min_cov)
+    return l
+
+rule callable_genome_merge:
+    input:
+        covered_list =  _inputfiles_callable_genome_ind,
+        callable_genome = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_callable_regions_joint_windows20000.bed"
+    output:
+        Prop_genome_vallable_stats = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{map}/{states}_{panel}_{bin_size}_{snpset}_{min_cov}.proportion_callable_genome.txt"
+    run:
+        split_char = wildcards.snpset
+        callableG = pd.read_table(input.callable_genome  ,sep='\t',names = ["chrom","start","end"] )
+        callableG = callableG[callableG['chrom'] != 23]
+        total_callable = sum(callableG["end"] - callableG["start"])
+        all_sample_name = list()
+        all_prop_callable = list()
+        for i in input.covered_list:
+            str_x=i.split("/")
+            str_x = str_x[-1].split(f"_{split_char}")
+            all_sample_name.append(str_x[0])
+            covered = pd.read_table(i  ,sep='\t',names = ["chrom","start","end","len"] )
+            covered = covered[covered['chrom'] != "X"]
+            covered_sum  = sum(covered["len"])
+            covered_prop = covered_sum / total_callable
+            all_prop_callable.append(covered_prop)
+        D = dict()
+        D["sample_name"] = all_sample_name
+        D["prop_callable"] = all_prop_callable
+        prop_callable_stats = pd.DataFrame.from_dict(D)
+        prop_callable_stats.to_csv(output.Prop_genome_vallable_stats,sep="\t",index=False)
+

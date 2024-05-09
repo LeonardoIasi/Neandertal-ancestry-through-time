@@ -1,0 +1,428 @@
+from collections import Counter
+from os import path
+import pandas as pd
+import numpy as np
+
+configfile: "../config/data_EMH_Introgression_Project.yaml"
+configfile: "../config/panels_EMH_Introgression_Project.yaml"
+
+include: "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/Phylogenetic_fragment_analysis/Phylogenetic_fragment_analysysis_fromVCF_geneticMap.snake"
+
+
+CHROMS = [str(i+1) for i in range(22)] + ["X"]
+#Folder_name = '/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map'
+Folder_name = '/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/WEurAsandCeAsSi_with_APX_SGDP_admixfrog0.7_Shared_Map'
+
+
+""" VCF PREPARATION"""
+
+def _prepare_vcf_filter(wc):
+    vcf_path = config["SGDP"][wc.sample]["vcf"]
+    s = "{}".format(vcf_path)
+    return s
+
+
+rule intersect_vcf:
+    input:
+        vcf = _prepare_vcf_filter,
+        bed= "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/polarized/{snpset}.bed"
+    output:
+        vcf = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/VCF_files/NewSGDP_unfiltered/{snpset}/{sample}_intersect.vcf"
+    run:
+        s = 'bedtools intersect -a {input.vcf} -header -b {input.bed} > {output.vcf}'
+        shell(s)
+
+rule compress_and_index_vcf2:
+    input:
+        vcf = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/VCF_files/NewSGDP_unfiltered/{snpset}/{sample}_intersect.vcf"
+    output:
+        vcf = temp("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/VCF_files/NewSGDP_unfiltered/{snpset}/{sample}_intersect.vcf.gz"),
+        vcf_tbi = temp("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/VCF_files/NewSGDP_unfiltered/{snpset}/{sample}_intersect.vcf.gz.tbi")
+    run:
+        s = "bgzip {input} "
+        shell(s)
+        shell("tabix  -p vcf {output.vcf}")
+
+
+
+rule admixfrog_sample_input_from_VCF:
+    input :
+        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
+        vcf = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/VCF_files/NewSGDP_unfiltered/{snpset}/{sample}_intersect.vcf.gz",
+        vcf_tbi = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/VCF_files/NewSGDP_unfiltered/{snpset}/{sample}_intersect.vcf.gz.tbi"
+    output:
+        csv = "{Folder_name}/samples/length_bin_{length_bin}/{sample}_{snpset}_VCF.in.xz"
+    run:
+        if len(CHROMS) == 1:
+            chrom = str(CHROMS[0])
+        elif len(CHROMS) > 1 and CHROMS[len(CHROMS)-1] == "X":
+            chrom = "-".join([min(CHROMS),CHROMS[len(CHROMS)-2]])
+            chrom = ",".join([chrom,CHROMS[len(CHROMS)-1]])
+        else:
+            chrom = "-".join([min(CHROMS),CHROMS[len(CHROMS)-1]])
+        sample_name = config["SGDP"][wildcards.sample]["IlluminaID"]
+        print(sample_name)
+        s = "admixfrog-bam --ref {input.ref} --vcfgt {input.vcf} --target {sample_name}"
+        s += " --force-target-file "
+        s += " --out {output.csv} "
+        s += " --chroms {chrom}"
+        print(s)
+        shell(s)
+
+
+
+
+def _inputfiles_panel_VCF(wc):
+    l = expand("{Folder_name}/samples/length_bin_{length_bin}/{sample}_{{snpset}}_VCF.in.xz",
+        Folder_name=Folder_name,sample = wc.sample,length_bin=wc.length_bin)
+    return l
+
+rule run_admixfrog_gtmode_from_VCF:
+    input:
+        infile = _inputfiles_panel_VCF,
+        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
+    params:
+        ll_tol = 1e-2,
+        freq_f = 3,
+        freq_c = 3,
+        error = 1e-2,
+        ancestral = "PAN",
+        run_penalty = 0.1,
+        max_iter = 250,
+        n_post_rep = 200,
+    output:
+        res_bin = "{Folder_name}/admixfrog/gtmode/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz",
+        res_snp = "{Folder_name}/admixfrog/gtmode/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.snp.xz",
+        res_cont= "{Folder_name}/admixfrog/gtmode/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.cont.xz",
+        res_par = "{Folder_name}/admixfrog/gtmode/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.pars.yaml",
+        res_rle = "{Folder_name}/admixfrog/gtmode/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle.xz",
+        res_res = "{Folder_name}/admixfrog/gtmode/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.res.xz",
+        res2_res = "{Folder_name}/admixfrog/gtmode/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.res2.xz"
+    run:
+        outname = path.splitext(path.splitext(output.res_bin)[0])[0]
+        states = wildcards.states.split("-")
+        genetic_map = str(wildcards.map)
+        s = "admixfrog --infile {input.infile} --ref {input.ref} -o {outname} "
+        s += " --filter-pos 50 --filter-map 0"
+        s += " --gt-mode "
+        s += " --states {states} "
+        s += " --ll-tol {params.ll_tol} "
+        s += " --bin-size {wildcards.bin_size} "
+        s += " --est-F --est-tau --freq-F {params.freq_f} "
+        s += " --dont-est-contamination "
+        s += " --c0 0"
+        s += " --e0 {params.error} "
+        s += " --ancestral {params.ancestral} "
+        s += " --run-penalty {params.run_penalty}"
+        s += " --max-iter {params.max_iter}"
+        s += " --n-post-replicates {params.n_post_rep}"
+        s += " --map-column {genetic_map}"      
+        #s += " --filter-pos 1000"
+        #s += " --init-guess AFR"
+        shell(s)
+
+rule call_runs:
+    input:
+        rle = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz",
+    output:
+       rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz",
+    shell:
+        "admixfrog-rle --out {output.rle} --in {input.rle} "
+        "--run-penalty {wildcards.penalty} "
+
+rule assign_call_status:
+    input:
+        rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz",
+        res_bin = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz",
+        res_snp = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.snp.xz",
+        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
+        script_ = "assigne_called_bins_and_rle_SNP_info.R"
+    params:
+        major_ref = 'AFR',
+        gtmode = True,
+        type_alle = False,
+        #major_ref = "NEAred"
+        #major_ref = "NEA"
+    output:
+       res_bin_call = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin_called{penalty}.xz",
+       res_rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz.anno"
+    script:
+        "assigne_called_bins_and_rle_SNP_info.R"
+
+def _inputfiles_bin_call(wc):
+    l = expand("{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin_called{penalty}.xz",
+        Folder_name=Folder_name,admf_params=wc.admf_params,bin_size=wc.bin_size,states=wc.states,snpset=wc.snpset,
+        sample = config['panels'][wc.panel],length_bin=wc.length_bin,penalty=wc.penalty,map=wc.map)
+    return l
+
+rule assign_call_status_all_types:
+    input:
+        rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz",
+        res_bin = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz",
+        res_snp = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.snp.xz",
+        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
+    params:
+        major_ref = 'AFR',
+        gtmode = True,
+        type_alle = True,
+    output:
+       res_bin_call = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin_called{penalty}_all_types.xz",
+       res_rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz.anno_all_types"
+    script:
+        "assigne_called_bins_and_rle_SNP_info.R"
+
+rule get_all_called_bins:
+    input:
+        bin_ref_file = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/{map}/{snpset}_admixfrog_bins_ref.bin.xz",
+        res_bin_call = _inputfiles_bin_call,
+        script_ = "combine_all_called_bins.R"
+    params:
+        split_char = "_archaic",
+        All_ancestries = ["NEA","AFR","DEN","AFRNEA","AFRDEN","NEADEN"]
+    output:
+        all_called_bins = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/All_bins_{called_Ancestry}_{panel}_{snpset}.bin_called{penalty}_min_len{bin_called_min_len}_min_len_pos{bin_called_min_len_pos}_min_n_all_SNP{allSNP}_min_n_SNP{SNP}.xz",
+        all_called_bins_frag_ID = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/All_bins_frag_IDs_{called_Ancestry}_{panel}_{snpset}.bin_called{penalty}_min_len{bin_called_min_len}__min_len_pos{bin_called_min_len_pos}_min_n_all_SNP{allSNP}_min_n_SNP{SNP}.xz"
+    script:
+        "combine_all_called_bins.R"
+
+rule get_SNPs_on_frags:
+    input:
+        rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz",
+        bed = "../ref/bed/{snpset}.bed"
+    output:
+        frag_bed = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.{called_Ancestry}.bed"
+    run:
+        s = "xzless  {input.rle} | sed 's/,/\t/g' | awk '/state/ {{print}}' | awk '/{wildcards.called_Ancestry}/ {{print $1,$8,$11}}' "
+        s += "| sed 's/,/\t/g' | sed 's/ /\t/g' "
+        s += "| bedtools intersect -a stdin -b {input.bed} > {output.frag_bed}"
+        shell(s)
+
+def _inputfiles_bin_raw(wc):
+    l = expand("{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz",
+        Folder_name=Folder_name,admf_params=wc.admf_params,bin_size=wc.bin_size,states=wc.states,snpset=wc.snpset,
+        sample = config['panels'][wc.panel],length_bin=wc.length_bin,map=wc.map)
+    return l
+
+rule get_all_raw_bins:
+    input:
+        bin_ref_file = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/{map}/{snpset}_admixfrog_bins_ref.bin.xz",
+        res_bin_call = _inputfiles_bin_raw,
+        script_ = "combine_all_called_bins.R"
+    params:
+        split_char = "_A1240k",
+        All_ancestries = ["NEA","AFR","DEN","AFRNEA","AFRDEN","NEADEN"]
+    output:
+        all_called_bins = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/All_bins_raw_{called_Ancestry}_{panel}_{snpset}.bin_raw.xz"
+    script:
+        "combine_all_raw_bins.R"
+
+
+"""ALLELE STATUS & F4 RATIOS """
+
+rule get_allele_status:
+    input:
+        sample_csv = "{Folder_name}/samples/length_bin_{length_bin}/{sample}_{snpset}_VCF.in.xz",
+        #script_ = "get_allele_states.R"
+    params:
+        deam = False
+    output:
+        all_alleles = temp("{Folder_name}/samples/length_bin_{length_bin}/X_{sample}_{snpset}_allele_state.csv")
+    script:
+        "get_allele_states.R"
+
+def _inputfiles_all_alleles(wc):
+    l = expand("{Folder_name}/samples/length_bin_{length_bin}/X_{sample}_{snpset}_allele_state.csv",
+        Folder_name=Folder_name,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin)
+    return l
+
+rule merge_allele_status:
+    input:
+        all_alleles = _inputfiles_all_alleles,
+        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
+        #script_ = "merge_allele_states.R"
+    params:
+        deam = False,
+        calc_DEN = False
+    output:
+        merged_all_alleles = "{Folder_name}/samples/length_bin_{length_bin}/Merged_{panel}_{snpset}_allele_state.csv"
+    script:
+        "merge_allele_states.R"
+
+rule f4ratios:
+    input:
+        merged_all_alleles = "{Folder_name}/samples/length_bin_{length_bin}/Merged_{panel}_{snpset}_allele_state.csv",
+        #script_ = "f4ratios.R"
+    params:
+        deam = False,
+        calc_DEN = False
+    output:
+        f4r_all_alleles_wide = "{Folder_name}/samples/length_bin_{length_bin}/f4r_{panel}_{snpset}_allele_state.csv",
+        f4r_all_alleles = "{Folder_name}/samples/length_bin_{length_bin}/f4r_{panel}_{snpset}_allele_state_long.csv"
+    script:
+        "f4ratios.R"
+
+"""OVERVIEW STATS"""
+
+def _inputfiles_ave_cov(wc):
+    l = expand("{Folder_name}/samples/length_bin_{length_bin}/{sample}_{snpset}_VCF.in.xz",
+        Folder_name=Folder_name,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin)
+    return l
+
+rule ave_cov:
+    input:
+        ref = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_{snpset}_hs37mMask35to99.csv.xz",
+        cov = _inputfiles_ave_cov
+    output:
+        cov_stats = "{Folder_name}/stats/Sample_coverage_{panel}_length_bin_{length_bin}_{snpset}.cov.txt"
+
+    run:
+        split_char = str(wildcards.snpset)
+        print(split_char)
+        ref = pd.read_table(input.ref  ,sep=',' )
+        n_sites = len(ref.pos)
+        all_sample_name = list()
+        all_cov_mean = list()
+        all_cov_median = list()
+        all_n_sites_covered = list()
+        for i in input.cov:
+            str_x=i.split("/")
+            str_x = str_x[-1].split(f"_{split_char}")
+            all_sample_name.append(str_x[0])
+            cov = pd.read_table(i  ,sep=',' )
+            cov=cov.groupby(by=['chrom','pos'],as_index = False)['tref','talt'].agg('sum')
+            sites_cov = np.concatenate((np.array(cov.tref + cov.talt), np.repeat([0], (n_sites- len(np.array(cov.tref + cov.talt))), axis=0)), axis=0)
+            ave_cov_i  = np.mean(sites_cov)
+            median_cov_i  = np.median(sites_cov)
+            all_cov_mean.append(ave_cov_i)
+            all_cov_median.append(median_cov_i)
+            all_n_sites_covered.append(len(cov.pos))
+
+        D = dict()
+        D["sample_name"] = all_sample_name
+        D["ave_cov"] = all_cov_mean
+        D["median_cov"] = all_cov_median
+        D["n_sites_cov"] = all_n_sites_covered
+        cov_stats = pd.DataFrame.from_dict(D)
+        cov_stats.to_csv(output.cov_stats,sep="\t",index=False)
+
+def _inputfiles_ave_cont(wc):
+    l = expand("{Folder_name}/admixfrog/gtmode/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.cont.xz",
+        Folder_name=Folder_name,admf_params=wc.admf_params,bin_size=wc.bin_size,states=wc.states,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin,map=wc.map)
+    return l
+
+rule ave_cont:
+    input:
+        cont = _inputfiles_ave_cont
+    output:
+        cont_stats = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.cont.txt"
+
+    run:
+        split_char = wildcards.snpset
+        all_sample_name = list()
+        all_cont = list()
+        all_cont_error = list()
+        for i in input.cont:
+            str_x=i.split("/")
+            str_x = str_x[-1].split(f"_{split_char}")
+            all_sample_name.append(str_x[0])
+            cont = pd.read_table(i  ,sep=',' )
+            ave_con_i  = sum(cont.iloc[:,1]*cont.iloc[:,6])/sum(cont.iloc[:,6])
+            ave_error_cont_i = sum(cont.iloc[:,2]*cont.iloc[:,6])/sum(cont.iloc[:,6])
+            all_cont.append(ave_con_i)
+            all_cont_error.append(ave_error_cont_i)
+        D = dict()
+        D["sample_name"] = all_sample_name
+        D["ave_cont"] = all_cont
+        D["ave_cont_error"] = all_cont_error
+        cont_stats = pd.DataFrame.from_dict(D)
+        cont_stats.to_csv(output.cont_stats,sep="\t",index=False)
+
+def _inputfiles_states_stats(wc):
+    l = expand("{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.res2.xz",
+        Folder_name=Folder_name,admf_params=wc.admf_params,bin_size=wc.bin_size,states=wc.states,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin,map=wc.map)
+    return l
+
+rule ave_states:
+    input:
+        states = _inputfiles_states_stats
+    output:
+        states_stats = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.states_stats.txt"
+
+    run:
+        split_char = wildcards.snpset
+        n_states = len(wildcards.states.split("-"))
+        all_sample_name = list()
+        str_x=input.states[0].split("/")
+        str_x = str_x[-1].split(f"_{split_char}")
+        all_sample_name.append(str_x[0])
+        states_table = pd.read_table(input.states[0]  ,sep=',' )
+        for i in input.states[1:len(input.states)]:
+            str_x=i.split("/")
+            str_x = str_x[-1].split(f"_{split_char}")
+            print(str_x)
+            all_sample_name.append(str_x[0])
+            states_table = pd.concat([states_table,pd.read_table(i  ,sep=',' )])
+
+        states_table.insert(0, "sample", [x for x in all_sample_name for i in range(n_states)], allow_duplicates=True)
+        states_table.to_csv(output.states_stats,sep="\t",index=False)
+
+rule get_QC_table:
+    input:
+        Meta_table = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/SGDP_sample_info.csv",
+        Contamination_table = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.cont.txt",
+        Posterior_Ancestry_estimates_table = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.states_stats.txt",
+        Coverage_table = "{Folder_name}/stats/Sample_coverage_{panel}_length_bin_{length_bin}_{snpset}.cov.txt",
+        f4_ratios_table = "{Folder_name}/samples/length_bin_{length_bin}/f4r_{panel}_{snpset}_allele_state_long.csv",
+        #script_ = "get_QC_table.R"
+    params:
+        EMH = False
+    output:
+        QC_table_wide = "{Folder_name}/stats/{admf_params}/{states}/{map}/QC_{panel}_length_bin_{length_bin}_{bin_size}_{snpset}.wide_updated.csv",
+        QC_table_long = "{Folder_name}/stats/{admf_params}/{states}/{map}/QC_{panel}_length_bin_{length_bin}_{bin_size}_{snpset}.long_updated.csv"
+    script:
+        "get_QC_table.R"
+
+rule callable_genome_ind:
+    input:
+        bin =  "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz"
+    output:
+        covered_bed = "{Folder_name}/Coverage_Masker/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}_{min_cov}.covered.bed",
+        missing_bed = "{Folder_name}/Coverage_Masker/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}_{min_cov}.missing.bed"
+    script:
+        "get_callable_genome_ind.R"
+
+
+def _inputfiles_callable_genome_ind(wc):
+    l = expand("{Folder_name}/Coverage_Masker/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}_{min_cov}.covered.bed",
+        Folder_name=Folder_name,admf_params=wc.admf_params,bin_size=wc.bin_size,states=wc.states,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin,map=wc.map,min_cov=wc.min_cov)
+    return l
+
+rule callable_genome_merge:
+    input:
+        covered_list =  _inputfiles_callable_genome_ind,
+        callable_genome = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_callable_regions_joint_windows20000.bed"
+    output:
+        Prop_genome_vallable_stats = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{map}/{states}_{panel}_{bin_size}_{snpset}_{min_cov}.proportion_callable_genome.txt"
+    run:
+        split_char = wildcards.snpset
+        callableG = pd.read_table(input.callable_genome  ,sep='\t',names = ["chrom","start","end"] )
+        callableG = callableG[callableG['chrom'] != 23]
+        total_callable = sum(callableG["end"] - callableG["start"])
+        all_sample_name = list()
+        all_prop_callable = list()
+        for i in input.covered_list:
+            str_x=i.split("/")
+            str_x = str_x[-1].split(f"_{split_char}")
+            all_sample_name.append(str_x[0])
+            covered = pd.read_table(i  ,sep='\t',names = ["chrom","start","end","len"] )
+            covered = covered[covered['chrom'] != "X"]
+            covered_sum  = sum(covered["len"])
+            covered_prop = covered_sum / total_callable
+            all_prop_callable.append(covered_prop)
+        D = dict()
+        D["sample_name"] = all_sample_name
+        D["prop_callable"] = all_prop_callable
+        prop_callable_stats = pd.DataFrame.from_dict(D)
+        prop_callable_stats.to_csv(output.Prop_genome_vallable_stats,sep="\t",index=False)
+
+

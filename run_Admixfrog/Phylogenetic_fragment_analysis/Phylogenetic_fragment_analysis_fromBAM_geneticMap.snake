@@ -68,7 +68,7 @@ def has_deamination(read):
 rule get_diagnostic_pileup:
     input:
         input_anno_segment_file = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz.anno_all_types",
-        input_file_diagnostic_sites = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/Phylogenetic_fragment_analysis/informative_sites_Mbuti_Vi33.19_Altai_Chagyrskaya_Den3_all_chrom.tab",
+        input_file_diagnostic_sites = "/Phylogenetic_fragment_analysis/informative_sites_Mbuti_Vi33.19_Altai_Chagyrskaya_Den3_chrom21.tab",
         bam_file= _prepare_bam_filter,
         #bam_index= "{input.bam_file}" + ".bai"
     params:
@@ -167,7 +167,7 @@ rule match_diagnostic_pileup:
     input:
         input_anno_segment_file = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz.anno_all_types",
         diagnostic_pileup_file = "{Folder_name}/Diagnostic_sites/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/allSites/{sample}_{snpset}.rle{penalty}.tab",
-        diagnostic_ref = "Phylogenetic_fragment_analysis/informative_sites_Mbuti_Vi33.19_Altai_Chagyrskaya_Den3_annotated.tab",
+        diagnostic_ref = "Phylogenetic_fragment_analysis/informative_sites_Mbuti_Vi33.19_Altai_Chagyrskaya_Den3_annotated_chrom21.tab",
         bed_file = "admixfrogREF/bed/{snpset}.bed"
     params:
         filter_map_len = 0.2,
