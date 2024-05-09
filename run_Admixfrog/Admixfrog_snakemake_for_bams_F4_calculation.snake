@@ -1,0 +1,93 @@
+"""ALLELE STATUS & F4 RATIOS from AF input"""
+
+rule get_allele_status_input:
+    input:
+        sample_csv = "{Folder_name}/samples/length_bin_{length_bin}/{sample}_{snpset}.in.xz",
+    params:
+        deam = True,
+        split_char = "_"
+    output:
+        all_alleles = temp("{Folder_name}/samples/length_bin_{length_bin}/X_{sample}_{snpset}_allele_state.csv"),
+        deam_only = temp("{Folder_name}/samples/length_bin_{length_bin}/X_{sample}_{snpset}_allele_state_deam.csv")
+    script:
+        "snakemake_pipeline_scripts/get_allele_states.R"
+
+def _inputfiles_all_alleles_input(wc):
+    l = expand("{Folder_name}/samples/length_bin_{length_bin}/X_{sample}_{snpset}_allele_state.csv",
+        Folder_name=Folder_name,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin)
+    return l
+
+def _inputfiles_deam_only_alleles_input(wc):
+    l = expand("{Folder_name}/samples/length_bin_{length_bin}/X_{sample}_{snpset}_allele_state_deam.csv",
+        Folder_name=Folder_name,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin)
+    return l
+
+rule merge_allele_status_input:
+    input:
+        all_alleles = _inputfiles_all_alleles_input,
+        deam_only = _inputfiles_deam_only_alleles_input,
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
+    params:
+        deam = True,
+        calc_DEN = False
+    output:
+        merged_all_alleles = "{Folder_name}/samples/length_bin_{length_bin}/Merged_{panel}_{snpset}_allele_state.csv",
+        merged_deam_only = "{Folder_name}/samples/length_bin_{length_bin}/Merged_{panel}_{snpset}_allele_state_deam.csv"
+    script:
+        "snakemake_pipeline_scripts/merge_allele_states.R"
+
+rule f4ratios_input:
+    input:
+        merged_all_alleles = "{Folder_name}/samples/length_bin_{length_bin}/Merged_{panel}_{snpset}_allele_state.csv",
+        merged_deam_only = "{Folder_name}/samples/length_bin_{length_bin}/Merged_{panel}_{snpset}_allele_state_deam.csv",
+    params:
+        deam = True,
+        calc_DEN = False
+    output:
+        f4r_all_alleles_wide = "{Folder_name}/samples/length_bin_{length_bin}/f4r_{panel}_{snpset}_allele_state.csv",
+        f4r_all_alleles = "{Folder_name}/samples/length_bin_{length_bin}/f4r_{panel}_{snpset}_allele_state_long.csv"
+    script:
+        "snakemake_pipeline_scripts/f4ratios.R"
+
+"""ALLELE STATUS & F4 RATIOS from AF output"""
+
+rule get_allele_status_output:
+    input:
+        sample_csv = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.snp.xz",
+    params:
+        random_read = False,
+        split_char = "_"
+    output:
+        all_alleles = temp("{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/X_{sample}_{snpset}_allele_state.csv")
+    script:
+        "snakemake_pipeline_scripts/get_allele_states_AF_output.R"
+
+def _inputfiles_all_alleles_output(wc):
+    l = expand("{{Folder_name}}/admixfrog/{{admf_params}}/length_bin_{{length_bin}}/{{bin_size}}/{{states}}/{{map}}/X_{sample}_{{snpset}}_allele_state.csv",
+        sample = config['panels'][wc.panel])
+    return l
+
+
+rule merge_allele_status_output:
+    input:
+        all_alleles = _inputfiles_all_alleles_output,
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
+    params:
+        deam = False,
+        calc_DEN = False
+    output:
+        merged_all_alleles = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/MergedOutput_{panel}_{snpset}_allele_state.csv"
+    script:
+        "snakemake_pipeline_scripts/merge_allele_states.R"
+
+rule f4ratios_output:
+    input:
+        merged_all_alleles = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/MergedOutput_{panel}_{snpset}_allele_state.csv",
+    params:
+        deam = False,
+        calc_DEN = False
+    output:
+        f4r_all_alleles_wide = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/f4rOutput_{panel}_{snpset}_allele_state.csv",
+        f4r_all_alleles = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/f4rOutput_{panel}_{snpset}_allele_state_long.csv"
+    script:
+        "snakemake_pipeline_scripts/f4ratios.R"

@@ -1,0 +1,11 @@
+ancient_bams:
+    LBK: 
+        bam : "folder_path_to_LBK/chr_all.bam"
+ancient_unprocessed_bams:
+    LBK:
+        bam : "folder_path_to_LBK/chr{CHROM}.bam"
+SGDP:
+    B_Australian-3:
+        vcf:  "folder_path_to_SGDP_ENAdownload/SS6004478.annotated.nh2.vcf.gz"
+        IlluminaID: "SS6004478"
+

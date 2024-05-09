@@ -1,0 +1,194 @@
+""" BAM PREPARATION"""
+
+def _prepare_bam_filter(wc):
+    bam_path = config["Project_Data"][wc.sample]["bam"]
+    s = "{}".format(bam_path)
+    return s
+
+
+rule index_bam:
+    input: "{Folder_name}/admixfrog_bams/{snpset}/{sample}.bam"
+    output: "{Folder_name}/admixfrog_bams/{snpset}/{sample}.bam.bai"
+    shell: "samtools index {input}"
+
+def _unprocessed_bams_merge(wc):
+    bam = config["Project_Data"][wc.sample]["bam"]
+    if "CHROM" in bam:
+        bam = expand(bam, CHROM=[str(i+1) for i in range(22)] + ["X"])
+    return bam
+
+rule unprocessed_bams_merge:
+    input:
+        _unprocessed_bams_merge
+    output:
+        "{Folder_name}/admixfrog_bams/unprocessed_bams/{sample}.bam"
+    run:
+        if len(input) > 1:
+            shell("samtools merge -c {output} {input}")
+        else:
+            shell("ln -sf {input} {output}")
+
+rule prepare_bam:
+    input:
+        bam= _prepare_bam_filter,
+        bed= "admixfrogREF/bed/{snpset}.bed"
+
+    params:
+        minlength=35,
+        qual=25,
+    output:
+        bam = "{Folder_name}/admixfrog_bams/{snpset}/{sample}.bam",
+    run:
+        s = 'samtools view -h {input.bam} -L {input.bed} '
+        s += "-q {params.qual} -F1 "
+        s += "| awk ' {{if($1~/^@/ || length($10) >= {params.minlength}) print $0}}'"
+        s += '|  samtools view - -S -h -b -o {output.bam}'
+        shell(s)
+
+""" RUN ADMIXFROG """
+
+rule admixfrog_sample_input:
+    input :
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
+        bam = "{Folder_name}/admixfrog_bams/{snpset}/{sample}.bam",
+        bai = "{Folder_name}/admixfrog_bams/{snpset}/{sample}.bam.bai",
+
+    params:
+        cutoff = 3,
+    output:
+        csv = "{Folder_name}/samples/length_bin_{length_bin}/{sample}_{snpset}.in.xz"
+    shell:
+        "admixfrog-bam --ref {input.ref} --bamfile {input.bam} --force-bam"
+        " --deam-cutoff {params.cutoff} "
+        " --out {output.csv} "
+        " --length-bin-size {wildcards.length_bin} "
+
+
+def _inputfiles_panel(wc):
+    l = expand("{Folder_name}/samples/length_bin_{length_bin}/{sample}_{{snpset}}.in.xz",
+        Folder_name=Folder_name,sample = wc.sample,length_bin=wc.length_bin)
+    return l
+
+rule run_admixfrog_error2:
+    input:
+        infile = _inputfiles_panel,
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
+    params:
+        cont_id = "AFR",
+        ll_tol = 1e-2,
+        freq_f = 3,
+        freq_c = 3,
+        error = 1e-2,
+        ancestral = "PAN",
+        run_penalty = 0.1,
+        max_iter = 250,
+        n_post_rep = 200,
+    version: ".3"
+    log :
+        log="{Folder_name}/admixfrog/error2/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.log"
+    output:
+        res_bin = "{Folder_name}/admixfrog/error2/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz",
+        res_snp = "{Folder_name}/admixfrog/error2/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.snp.xz",
+        res_cont= "{Folder_name}/admixfrog/error2/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.cont.xz",
+        res_par = "{Folder_name}/admixfrog/error2/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.pars.yaml",
+        res_rle = "{Folder_name}/admixfrog/error2/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle.xz",
+        res_res = "{Folder_name}/admixfrog/error2/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.res.xz",
+        res2_res = "{Folder_name}/admixfrog/error2/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.res2.xz",
+    run:
+        outname = path.splitext(path.splitext(output.res_bin)[0])[0]
+        states = wildcards.states.split("-")
+        genetic_map = str(wildcards.map)
+        s = "admixfrog --infile {input.infile} --ref {input.ref} -o {outname} "
+        s += " --states {states}/{map} "
+        s += " --cont-id {params.cont_id} "
+        s += " --ll-tol {params.ll_tol} "
+        s += " --bin-size {wildcards.bin_size} "
+        s += " --est-F --est-tau --freq-F {params.freq_f} "
+        s += " --freq-contamination {params.freq_c} "
+        s += " --e0 {params.error} "
+        s += " --est-error "
+        s += " --ancestral {params.ancestral} "
+        s += " --run-penalty {params.run_penalty}"
+        s += " --max-iter {params.max_iter}"
+        s += " --n-post-replicates {params.n_post_rep}"
+        s += " --map-column {genetic_map}"
+        s += " --filter-pos 50 --filter-map 0.000"
+        s += " --init-guess AFR"
+        shell(s)
+
+
+rule call_runs:
+    input:
+        rle = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz",
+    output:
+       rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz",
+    shell:
+        "admixfrog-rle --out {output.rle} --in {input.rle} "
+        "--run-penalty {wildcards.penalty} "
+
+rule assign_call_status:
+    input:
+        rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz",
+        res_bin = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz",
+        res_snp = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.snp.xz",
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
+    params:
+        major_ref = 'AFR',
+        gtmode = False,
+        type_alle = False,
+    output:
+       res_bin_call = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin_called{penalty}.xz",
+       res_rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz.anno"
+    script:
+        "snakemake_pipeline_scripts/assigne_called_bins_and_rle_SNP_info.R"
+
+rule assign_call_status_all_types:
+    input:
+        rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz",
+        res_bin = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin.xz",
+        res_snp = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.snp.xz",
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
+    params:
+        major_ref = 'AFR',
+        gtmode = False,
+        type_alle = True,
+    output:
+       res_bin_call = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin_called{penalty}_all_types.xz",
+       res_rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz.anno_all_types"
+    script:
+        "snakemake_pipeline_scripts/assigne_called_bins_and_rle_SNP_info.R"
+
+def _inputfiles_bin_call(wc):
+    l = expand("{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.bin_called{penalty}.xz",
+        Folder_name=Folder_name,admf_params=wc.admf_params,bin_size=wc.bin_size,states=wc.states,snpset=wc.snpset,
+        sample = config['panels'][wc.panel],length_bin=wc.length_bin,penalty=wc.penalty,map=wc.map)
+    return l
+
+rule get_all_called_bins:
+    input:
+        bin_ref_file = "admixfrogREF/ref/bin_ref/{map}/archaicadmixtureAPX_admixfrog_bins_ref.bin.xz",
+        res_bin_call = _inputfiles_bin_call,
+    params:
+        split_char = "_",
+        All_ancestries = ["NEA","AFR","DEN","AFRNEA","AFRDEN","NEADEN"]
+    output:
+        all_called_bins = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/All_bins_{called_Ancestry}_{panel}_{snpset}.bin_called{penalty}_min_len{bin_called_min_len}_min_len_pos{bin_called_min_len_pos}_min_n_all_SNP{allSNP}_min_n_SNP{SNP}.xz",
+        all_called_bins_frag_ID = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/All_bins_frag_IDs_{called_Ancestry}_{panel}_{snpset}.bbin_called{penalty}_min_len{bin_called_min_len}_min_len_pos{bin_called_min_len_pos}_min_n_all_SNP{allSNP}_min_n_SNP{SNP}.xz"
+    script:
+        "snakemake_pipeline_scripts/combine_all_called_bins.R"
+
+rule get_SNPs_on_frags:
+    input:
+        rle = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.xz",
+        bed = "../ref/bed/{snpset}.bed"
+    output:
+        frag_bed = "{Folder_name}/rle/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.rle{penalty}.{called_Ancestry}.bed"
+    run:
+        s = "xzless  {input.rle} | sed 's/,/\t/g' | awk '/state/ {{print}}' | awk '/{wildcards.called_Ancestry}/ {{print $1,$8,$11}}' "
+        s += "| sed 's/,/\t/g' | sed 's/ /\t/g' "
+        s += "| bedtools intersect -a stdin -b {input.bed} > {output.frag_bed}"
+        shell(s)
+
+
+
+

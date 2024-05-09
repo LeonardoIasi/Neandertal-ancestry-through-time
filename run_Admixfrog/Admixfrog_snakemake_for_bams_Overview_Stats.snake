@@ -1,0 +1,118 @@
+
+"""OVERVIEW STATS"""
+
+def _inputfiles_ave_cov(wc):
+    l = expand("{Folder_name}/samples/length_bin_{length_bin}/{sample}_{snpset}.in.xz",
+        Folder_name=Folder_name,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin)
+    return l
+
+rule ave_cov:
+    input:
+        ref = "admixfrogREF/ref/ref_{snpset}_hs37mMask35to99.csv.xz",
+        cov = _inputfiles_ave_cov
+    output:
+        cov_stats = "{Folder_name}/stats/Sample_coverage_{panel}_length_bin_{length_bin}_{snpset}.cov.txt"
+
+    run:
+        ref = pd.read_table(input.ref  ,sep=',' )
+        n_sites = len(ref.pos)
+        all_sample_name = list()
+        all_cov_mean = list()
+        all_cov_median = list()
+        all_n_sites_covered = list()
+        for i in input.cov:
+            str_x=i.split("/")
+            str_x = str_x[-1].split("_")
+            all_sample_name.append(str_x[0])
+            cov = pd.read_table(i  ,sep=',' )
+            cov=cov.groupby(by=['chrom','pos'],as_index = False)['tref','talt'].agg('sum')
+            sites_cov = np.concatenate((np.array(cov.tref + cov.talt), np.repeat([0], (n_sites- len(np.array(cov.tref + cov.talt))), axis=0)), axis=0)
+            ave_cov_i  = np.mean(sites_cov)
+            median_cov_i  = np.median(sites_cov)
+            all_cov_mean.append(ave_cov_i)
+            all_cov_median.append(median_cov_i)
+            all_n_sites_covered.append(len(cov.pos))
+
+        D = dict()
+        D["sample_name"] = all_sample_name
+        D["ave_cov"] = all_cov_mean
+        D["median_cov"] = all_cov_median
+        D["n_sites_cov"] = all_n_sites_covered
+        cov_stats = pd.DataFrame.from_dict(D)
+        cov_stats.to_csv(output.cov_stats,sep="\t",index=False)
+
+def _inputfiles_ave_cont(wc):
+    l = expand("{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.cont.xz",
+        Folder_name=Folder_name,admf_params=wc.admf_params,bin_size=wc.bin_size,states=wc.states,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin,map=wc.map)
+    return l
+
+rule ave_cont:
+    input:
+        cont = _inputfiles_ave_cont
+    output:
+        cont_stats = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}/{map}_{panel}_{bin_size}_{snpset}.cont.txt"
+
+    run:
+        all_sample_name = list()
+        all_cont = list()
+        all_cont_error = list()
+        for i in input.cont:
+            str_x=i.split("/")
+            str_x = str_x[-1].split("_")
+            all_sample_name.append(str_x[0])
+            cont = pd.read_table(i  ,sep=',' )
+            ave_con_i  = sum(cont.iloc[:,1]*cont.iloc[:,6])/sum(cont.iloc[:,6])
+            ave_error_cont_i = sum(cont.iloc[:,2]*cont.iloc[:,6])/sum(cont.iloc[:,6])
+            all_cont.append(ave_con_i)
+            all_cont_error.append(ave_error_cont_i)
+        D = dict()
+        D["sample_name"] = all_sample_name
+        D["ave_cont"] = all_cont
+        D["ave_cont_error"] = all_cont_error
+        cont_stats = pd.DataFrame.from_dict(D)
+        cont_stats.to_csv(output.cont_stats,sep="\t",index=False)
+
+def _inputfiles_states_stats(wc):
+    l = expand("{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/{sample}_{snpset}.res2.xz",
+        Folder_name=Folder_name,admf_params=wc.admf_params,bin_size=wc.bin_size,states=wc.states,snpset=wc.snpset,sample = config['panels'][wc.panel],length_bin=wc.length_bin,map=wc.map)
+    return l
+
+rule ave_states:
+    input:
+        states = _inputfiles_states_stats
+    output:
+        states_stats = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.states_stats.txt"
+
+    run:
+        n_states = len(wildcards.states.split("-"))
+        all_sample_name = list()
+        str_x=input.states[0].split("/")
+        str_x = str_x[-1].split("_")
+        all_sample_name.append(str_x[0])
+        states_table = pd.read_table(input.states[0]  ,sep=',' )
+        for i in input.states[1:len(input.states)]:
+            str_x=i.split("/")
+            str_x = str_x[-1].split("_")
+            all_sample_name.append(str_x[0])
+            states_table = pd.concat([states_table,pd.read_table(i  ,sep=',' )])
+
+        states_table.insert(0, "sample", [x for x in all_sample_name for i in range(n_states)], allow_duplicates=True)
+        states_table.to_csv(output.states_stats,sep="\t",index=False)
+
+
+rule get_QC_table:
+    input:
+        Meta_table = "Meta_tabel_for_samples",
+        Contamination_table = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.cont.txt",
+        Posterior_Ancestry_estimates_table = "{Folder_name}/stats/{admf_params}/length_bin_{length_bin}/{states}_{map}_{panel}_{bin_size}_{snpset}.states_stats.txt",
+        Coverage_table = "{Folder_name}/stats/Sample_coverage_{panel}_length_bin_{length_bin}_{snpset}.cov.txt",
+        f4_ratios_table = "{Folder_name}/samples/length_bin_{length_bin}/f4r_{panel}_{snpset}_allele_state_long.csv",
+        f4_ratios_table_output = "{Folder_name}/admixfrog/{admf_params}/length_bin_{length_bin}/{bin_size}/{states}/{map}/f4rOutput_{panel}_{snpset}_allele_state_long.csv",
+        script_ = "get_QC_table.R"
+    params:
+        EMH = True
+    output:
+        QC_table_wide = "{Folder_name}/stats/{admf_params}/{states}/{map}/QC_{panel}_length_bin_{length_bin}_{bin_size}_{snpset}.wide_updated.csv",
+        QC_table_long = "{Folder_name}/stats/{admf_params}/{states}/{map}/QC_{panel}_length_bin_{length_bin}_{bin_size}_{snpset}.long_updated.csv"
+    script:
+        "snakemake_pipeline_scripts/get_QC_table.R"
