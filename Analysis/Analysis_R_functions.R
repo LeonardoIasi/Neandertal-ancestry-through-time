@@ -59,6 +59,39 @@ get_rle_files <- function(directory_path, split_char,type_,target_,chrom_,sep_ch
   return(All_rle)
 }
 
+write_bed_from_All_rle <- function(rle_file,type_,target_,chrom_,path,min_len,min_bp_len,min_SNP,optional_col=NULL){
+  file_name = c()
+  for(smp in unique(rle_file$sample)){
+    smp_name = smp
+    print(smp_name)
+    if(is.null(optional_col)){
+      All_rle = rle_file %>% filter(sample == smp) %>% filter(type %in% type_) %>% 
+        filter(target %in% target_) %>% 
+        filter(chrom %in% chrom_) %>% mutate(sample = smp_name) %>%
+        drop_na() %>%
+        filter(map_len >= min_len, pos_len >= min_bp_len, n_all_snps >= min_SNP) %>%
+        mutate(frag_ID = paste(sample,target,chrom,start,end,sep="_")) %>%
+        dplyr::select(chrom,pos,pos_end,sample) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
+        mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,pos,pos_end)
+    } else{
+      All_rle = read.csv(directory_path[i]) %>% filter(type %in% type_) %>% 
+        filter(target %in% target_) %>% 
+        filter(chrom %in% chrom_) %>% mutate(sample = smp_name) %>%
+        drop_na() %>%
+        filter(map_len >= min_len, pos_len >= min_bp_len, n_all_snps >= min_SNP) %>%
+        mutate(frag_ID = paste(sample,target,chrom,start,end,sep="_")) %>%
+        dplyr::select(chrom,pos,pos_end,sample,!!optional_col) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
+        mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,pos,pos_end)
+    }
+    
+    file_name_x = paste(path,"/",smp_name,"_", paste(target_, collapse='_'),"_",paste(type_, collapse='_'),"min_len_",min_len,"_minSNP_",min_SNP,".bed",sep="")  
+    write.table(All_rle,file_name_x,quote = F,sep = "\t",row.names = F,col.names = F)
+    file_name = c(file_name,file_name_x)
+  }
+  return(file_name)
+}
+
+
 write_bed_from_rle <- function(directory_path, split_char,type_,target_,chrom_,path,min_len,min_bp_len,min_SNP,optional_col=NULL){
   file_name = c()
   for(i in 1:length(directory_path)){
