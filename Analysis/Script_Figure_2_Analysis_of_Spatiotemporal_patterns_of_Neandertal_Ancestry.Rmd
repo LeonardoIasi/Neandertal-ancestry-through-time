@@ -12,24 +12,33 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Analysis of Spatiotemporal patterns of Neandertal ancestry
 
+Here we focus on non-African individuals and how the sharing of their Neandertal segments compares the the overall population structure.
+
 ## Functions
 
 ```{r eval=T,echo=F,results='hide'}
-source("~/EMH_Introgression_Project/Introgression_Detection/scripts/Analysis_R_functions.R")
+source("Analysis_R_functions.R")
 ```
 
 ## Meta Data
 
 ```{r eval=T,echo=F,results='hide'}
-# folder
-folder_path = "~/EMH_Introgression_Project/Introgression_Detection/Preliminary_figures_Updates_admixfrog0.7/"
+############## change path  ##################
+folder_path = "Paper_figures"
 
-folder_path_data = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/Preliminary_Paper_Figures_Data/"
+folder_path_data = "Paper_figures_Data/"
 
-folder_path_Sup_Tables = "~/EMH_Introgression_Project/Introgression_Detection/Supplements_Tables/"
+folder_path_Sup_Tables = "Supplements_Tables/"
 
-Joint_Meta <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clusters_using_1240k.csv") %>% 
-  filter(sample_name != "Mota",SuperclusterF3D != "Africa") %>% mutate(sample_name=gsub( "-", ".", sample_name))
+path_to_dryad_downloaded_files = "Dryad_folder"
+
+path_to_my_admixfrog_folder_ancient = "Admixfrog_res_ancient"
+
+path_to_my_admixfrog_folder_present = "Admixfrog_res_present"
+##############################################
+
+Joint_Meta <- read.csv(paste0(path_to_dryad_downloaded_files,"Meta_Data_individuals.csv")) %>% 
+  filter(sample_name != "Mota",superpopulation_cluster != "Africa") %>% mutate(sample_name=gsub( "-", ".", sample_name))
 
 
 cluster_color_broad_all = data.frame(clusterF3D_broad_all = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","North_Africa","Oceania","postLGM-WEurHG","preLGM-WEurHG","SA","Satsurblia","Siberia&Americas" ,"Sub-Sahara-Africa","SWA","WEur","Yamnaya"),
@@ -44,17 +53,19 @@ cluster_color_refined = data.frame(clusterF3D_refined = c("AncientEAS","ANE","AN
                                  cluster_color = c("#009292FF","#6DB6FFFF","#004949FF","#924900FF","#DB6D00FF","#808080","#920000FF","#006DDBFF","#FFB6DBFF","#24FF24FF","#000000FF","#B66DFFFF","#FF6DB6FF","#490092FF","#B6DBFFFF","#FFCC00"))
 
 
-Supercluster_color = data.frame(SuperclusterF3D = c("Americas&Asia","EarlyOoA","Oceania","WEurCAS"),Supercluster_color = c("#924900FF","#004949FF","#006DDBFF","#FF6DB6FF"))
+Supercluster_color = data.frame(superpopulation_cluster = c("Americas&Asia","EarlyOoA","Oceania","WEurCAS"),Supercluster_color = c("#924900FF","#004949FF","#006DDBFF","#FF6DB6FF"))
 
 cluster_color = cluster_color_broad
 ```
 
 ## Cutoffs
 
+We use the usual cutoffs described in the paper which are a minimum length of 0.2 cM for ancient and 0.05 cM for present day individuals.
+
 ```{r eval=T,echo=F,results='hide'}
 chrom_ <- c("1" ,"2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" )
 
-cluster_used = "clusterF3D_broad"
+cluster_used = "population_cluster"
 
 cluster_color = cluster_color_broad
 
@@ -74,25 +85,29 @@ called_type = as.vector(c("state"))
 
 ## Neandertal Ancestry PCA
 
+First we construct a PCS from the overlaps of NEandertal segments between individuals. We use bedtools multiintersect to obtain a matrix of 0 and 1 that indicates if an individual has a Neandertal segment or not. There for we write bed file from the ALL_called_ancestry_segments.csv file from the Dryad repo.
+
 ### Get segment overlap matrix
 
 ```{r eval=T,echo=F,results='hide'}
+EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
+Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0]
 
-dir_path_EMH_all <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = paste0("archaicadmixtureAPX.rle",penalty,".xz.anno_all_types$"),full.names = T)
+rle_file = read.csv("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/Data_Upload/ALL_called_ancestry_segments.csv")
+
+rle_EMH = rle_file %>% filter(sample %in% EMH_sample_list)
+
+rle_PD = rle_file %>% filter(sample %in% Present_Day_sample_list)
+
+EMH_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_EMH,type_ = called_type,target_ = states,chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP,optional_col = "frag_ID")
+
+SGDP_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_PD,type_ = called_type,target_ = states,chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP,optional_col = "frag_ID")
 
 
-dir_path_SGDP_all <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = paste0("archaicadmixtureAPX.rle",penalty,".xz.anno_all_types$"),full.names = T)
+system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_NEA_state,SGDP_file_names_NEA_state), collapse=' ',sep = " ")," > Bed_files/All_NEA_state_with_indcount_unmasked_matrix.bed",sep=" "))
 
-
-EMH_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_EMH_all,split_char = "_",type_ = called_type,target_ = states,chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP,optional_col = "frag_ID")
-
-SGDP_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_SGDP_all,split_char = "_archaic",type_ = called_type,target_ = states,chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP,optional_col = "frag_ID")
-
-
-system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_NEA_state,SGDP_file_names_NEA_state), collapse=' ',sep = " ")," > ~/EMH_Introgression_Project/Introgression_Detection/Analysis/PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_unmasked_matrix.bed",sep=" "))
-
-system("bedtools subtract -a ~/EMH_Introgression_Project/Introgression_Detection/Analysis/PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_unmasked_matrix.bed  -b ~/EMH_Introgression_Project/Introgression_Detection/ref/bed/AA_Mask_joint.bed > ~/EMH_Introgression_Project/Introgression_Detection/Analysis/PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_masked_matrix.bed
-")
+system(past0("bedtools subtract -a Bed_files/All_NEA_state_with_indcount_unmasked_matrix.bed  -b ",path_to_dryad_downloaded_files,"/AA_Mask_joint.bed > PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_masked_matrix.bed
+"))
 
 
 sample_names <- c()
@@ -106,15 +121,15 @@ for(i in c(SGDP_file_names_NEA_state)){
   sample_names <- c(sample_names,smp_name)
 }
 
-write.table(x = sample_names,file = "~/EMH_Introgression_Project/Introgression_Detection/Analysis/PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_unmasked_matrix_sample_names.txt",quote = F,row.names = F,col.names = F)
+write.table(x = sample_names,file = "PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_unmasked_matrix_sample_names.txt",quote = F,row.names = F,col.names = F)
 
-Nea_ancestry_ind_count_matrix_unmasked <- read.table("~/EMH_Introgression_Project/Introgression_Detection/Analysis/PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_unmasked_matrix.bed",col.names = c("chrom","start","end","n_ind","ind_index",sample_names))
+Nea_ancestry_ind_count_matrix_unmasked <- read.table("PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_unmasked_matrix.bed",col.names = c("chrom","start","end","n_ind","ind_index",sample_names))
 
-write.table(Nea_ancestry_ind_count_matrix_unmasked,"~/EMH_Introgression_Project/Introgression_Detection/Analysis/PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_unmasked_matrix.csv",quote = F,row.names = F)
+write.table(Nea_ancestry_ind_count_matrix_unmasked,"PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_unmasked_matrix.csv",quote = F,row.names = F)
 
-Nea_ancestry_ind_count_matrix <- read.table("~/EMH_Introgression_Project/Introgression_Detection/Analysis/PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_masked_matrix.bed",col.names = c("chrom","start","end","n_ind","ind_index",sample_names))
+Nea_ancestry_ind_count_matrix <- read.table("PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_masked_matrix.bed",col.names = c("chrom","start","end","n_ind","ind_index",sample_names))
 
-write.table(Nea_ancestry_ind_count_matrix,"~/EMH_Introgression_Project/Introgression_Detection/Analysis/PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_masked_matrix.csv",quote = F,row.names = F)
+write.table(Nea_ancestry_ind_count_matrix,"PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_masked_matrix.csv",quote = F,row.names = F)
 
 rm(Nea_ancestry_ind_count_matrix_unmasked,Nea_ancestry_ind_count_matrix)
 ```
@@ -123,14 +138,16 @@ rm(Nea_ancestry_ind_count_matrix_unmasked,Nea_ancestry_ind_count_matrix)
 ### Select individuals
 
 ```{r eval=T,echo=F,results='hide'}
-Segment_cluster_data <- read.table("~/EMH_Introgression_Project/Introgression_Detection/Analysis/PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_masked_matrix.csv",sep=" ", header=T)
+Segment_cluster_data <- read.table("PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_masked_matrix.csv",sep=" ", header=T)
 
-samples_x <- Joint_Meta  %>% filter(SuperclusterF3D != "Africa") %>% .$sample_name
+samples_x <- Joint_Meta  %>% filter(superpopulation_cluster != "Africa") %>% .$sample_name
 
 Segment_cluster_data_red <- Segment_cluster_data %>% dplyr::select(chrom,start,end,n_ind,ind_index,!!c(samples_x))
 ```
 
 ### Calculate PCA
+
+Here we calculate the PCA but only the first 5 PCs to save some time
 
 ```{r eval=T,echo=F,results='hide'}
 seg.pca <- prcomp(t(Segment_cluster_data_red[,c(6:length(Segment_cluster_data_red))]), center = TRUE,rank. = 5)  
@@ -141,14 +158,13 @@ Segment_PCA_all_anno <- as.data.frame(seg.pca$x) %>% rownames_to_column(.,"sampl
 
 Segment_PCA_all_importance <- summary(seg.pca)$importance
 
-#save(Segment_PCA_all_anno,Segment_PCA_all_importance,file = "~/EMH_Introgression_Project/Introgression_Detection/Analysis/PCA_Neandertal_Ancestry/PCA_on_NEA_ancestry.RData")
-
-
 save(Segment_PCA_all_anno,Segment_PCA_all_importance,file = paste0(folder_path_data,"PCA_on_NEA_ancestry.RData"))
 
 ```
 
 ### Get highest loadings
+
+We can also look st the loading of the PCs since we are interested which segments drive the differences between populations and what is the frequency of these segments in all populations. Do they also have them or are they unique to a population.
 
 ```{r eval=T,echo=F,results='hide'}
 Segment_PCA_all_loadings = as.data.frame(seg.pca$rotation)
@@ -159,7 +175,7 @@ Segment_PCA_all_loadings = Segment_PCA_all_loadings %>% dplyr::select(PC1,PC2,PC
 
 Segment_PCA_all_loadings$averageNEAfrag <- rowMeans(Segment_PCA_all_loadings[,11:(length(Segment_PCA_all_loadings))])
 
-for( pop in unique(Joint_Meta[[cluster_used]][Joint_Meta$SuperclusterF3D != "Africa"])){
+for( pop in unique(Joint_Meta[[cluster_used]][Joint_Meta$superpopulation_cluster != "Africa"])){
   samples = Joint_Meta$sample_name[Joint_Meta[[cluster_used]] == pop]
   samples = samples[which(samples %in% colnames(Segment_PCA_all_loadings))]
   mean_ <- Segment_PCA_all_loadings %>% dplyr::select(all_of(samples)) %>% rowMeans()
@@ -193,9 +209,6 @@ Segment_PCA_all_loadings_red_long_PC1 <-  Segment_PCA_all_loadings_red_PC1_merge
 Segment_PCA_all_loadings_red_long_PC2 <-  Segment_PCA_all_loadings_red_PC2_merged %>%
   pivot_longer(!c(chrom,region_start,region_end,region_len,mean_abs_PC2,averageNEAfrag), names_to = "pops", values_to = "NEAfrag") %>% mutate(pops = gsub("averageNEAfrag_","",pops))
 
-#save(Segment_PCA_all_loadings_red_long_PC1,file = "~/EMH_Introgression_Project/Introgression_Detection/Analysis/PCA_Neandertal_Ancestry/PCA_on_NEA_ancestry_Highest_Loadings_PC1.RData")
-#save(Segment_PCA_all_loadings_red_long_PC2,file = "~/EMH_Introgression_Project/Introgression_Detection/Analysis/PCA_Neandertal_Ancestry/PCA_on_NEA_ancestry_Highest_Loadings_PC2.RData")
-
 
 save(Segment_PCA_all_loadings_red_long_PC1,file = paste0(folder_path_data,"PCA_on_NEA_ancestry_Highest_Loadings_PC1.RData"))
 save(Segment_PCA_all_loadings_red_long_PC2,file = paste0(folder_path_data,"PCA_on_NEA_ancestry_Highest_Loadings_PC2.RData"))
@@ -205,27 +218,33 @@ save(Segment_PCA_all_loadings_red_long_PC2,file = paste0(folder_path_data,"PCA_o
 
 ## Unique segments
 
+Next we look at Neandertal ancestry that is either shared or unique to a population cluster.
+
 ### Segment data
 
 ```{r echo=FALSE, eval=TRUE, results='hide'}
 
-dir_path_EMH <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map),pattern = paste0("archaicadmixtureAPX.rle",penalty,".xz.anno_all_types$"),full.names = T)
+EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
+Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0]
 
+rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv"))
 
-dir_path_SGDP <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map),paste0("archaicadmixtureAPX.rle",penalty,".xz.anno_all_types$"),full.names = T)
+rle_EMH = rle_file %>% filter(sample %in% EMH_sample_list) %>% 
+  filter(type == called_type,target == states,chrom %in% chrom_,map_len >= min_len_ancient, pos_len >= min_bp_len_ancient)
 
-
-
-EMH_rle_all <- get_rle_files(dir_path_EMH,"_",type_ = called_type,target_ = states,chrom_,sep_char = ",") %>% 
-  drop_na() %>% filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient)
-SGDP_rle_all <- get_rle_files(dir_path_SGDP,"_archaic",type_ = called_type,target_ = states,chrom_,sep_char=",") %>% filter(map_len >= min_len_present, pos_len >= min_bp_len_present) %>%
+rle_PD = rle_file %>% filter(sample %in% Present_Day_sample_list) %>% 
+  filter(type == called_type,target == states,chrom %in% chrom_,map_len >= min_len_present, pos_len >= min_bp_len_present) %>%
   mutate(sample = gsub("-", "\\.", sample))
 
-All_rle <- rbind(SGDP_rle_all,EMH_rle_all)
+
+
+All_rle <- rbind(rle_EMH,rle_PD) 
 
 ```
 
 ### For all samples in Population Cluster
+
+Here we get the shared and unique Neandertal ancestry for the whole population clusters
 
 ```{r eval=T,echo=F,results='hide'}
 
@@ -236,7 +255,7 @@ for(pop_ in unique(Joint_Meta_unrelated[[cluster_used]])){
   
   print(pop_)
   NEA_Overlap_data = All_rle %>% filter(sample %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
-    inner_join(.,Joint_Meta_unrelated[,c("sample_name","SuperclusterF3D",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
+    inner_join(.,Joint_Meta_unrelated[,c("sample_name","superpopulation_cluster",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
     filter((!!sym(cluster_used)) == pop_) %>% group_overlaps_fn(.)  %>% 
     group_by(chrom,group_id) %>% dplyr::summarise(start_pos = min(pos),end_pos = max(pos_end)) %>% 
   mutate(pos_len = end_pos - start_pos) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
@@ -244,18 +263,20 @@ for(pop_ in unique(Joint_Meta_unrelated[[cluster_used]])){
   
   pop_ = gsub("&","_",pop_)
   
-  write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$group_id),file =paste("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/",pop_,"_NEA_ancestry_unmasked.bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
-  Pop_bed_names = c(Pop_bed_names,paste("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/",pop_,"_NEA_ancestry_unmasked.bed",sep=""))
+  write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$group_id),file =paste("Unique_NEA_Segments/",pop_,"_NEA_ancestry_unmasked.bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
+  Pop_bed_names = c(Pop_bed_names,paste("Unique_NEA_Segments/",pop_,"_NEA_ancestry_unmasked.bed",sep=""))
   
 }
 
-system(paste("bedtools multiinter -i ",paste(Pop_bed_names, collapse=' ',sep = " ")," > ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Pop_NEA_ancestry_unmasked.bed",sep=" "))
+system(paste("bedtools multiinter -i ",paste(Pop_bed_names, collapse=' ',sep = " ")," > Unique_NEA_Segments/Pop_NEA_ancestry_unmasked.bed",sep=" "))
 
-system("bedtools subtract -a ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Pop_NEA_ancestry_unmasked.bed -b ~/EMH_Introgression_Project/Introgression_Detection/ref/bed/AA_Mask_joint.bed  > ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Pop_NEA_ancestry_masked.bed
-")
+system(paste0("bedtools subtract -a Unique_NEA_Segments/Pop_NEA_ancestry_unmasked.bed -b ",path_to_dryad_downloaded_files,"/AA_Mask_joint.bed  > Unique_NEA_Segments/Pop_NEA_ancestry_masked.bed
+"))
 ```
 
 ### For Single Sample per Population Cluster
+
+Since the population clusters have different sizes we can controle for it by randomly sample one individuals per population and compute the unique and shared Neandertal ancestry.
 
 ```{r eval=T,echo=F,results='hide'}
 
@@ -265,29 +286,29 @@ for(pop_ in unique(Joint_Meta_unrelated[[cluster_used]])){
   print(pop_)
   pop_ind <-  sample(Joint_Meta_unrelated$sample_name[Joint_Meta[[cluster_used]] == pop_],1,F)
   NEA_Overlap_data = All_rle %>% filter(sample %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
-    inner_join(.,Joint_Meta_unrelated[,c("sample_name","SuperclusterF3D",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
+    inner_join(.,Joint_Meta_unrelated[,c("sample_name","superpopulation_cluster",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
     filter(sample == pop_ind) %>% mutate(start_pos = pos,end_pos = pos_end) %>% 
   mutate(pos_len = end_pos - start_pos) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
   mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,start_pos,end_pos)
   
   pop_ = gsub("&","_",pop_)
   
-  write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$id),file =paste("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Single_sample_from_",pop_,"_NEA_ancestry_unmasked.bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
-  Pop_bed_names = c(Pop_bed_names,paste("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Single_sample_from_",pop_,"_NEA_ancestry_unmasked.bed",sep=""))
+  write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$id),file =paste("Unique_NEA_Segments/Single_sample_from_",pop_,"_NEA_ancestry_unmasked.bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
+  Pop_bed_names = c(Pop_bed_names,paste("Unique_NEA_Segments/Single_sample_from_",pop_,"_NEA_ancestry_unmasked.bed",sep=""))
   
 }
 
-system(paste("bedtools multiinter -i ",paste(Pop_bed_names, collapse=' ',sep = " ")," > ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Single_sample_from_Pop_NEA_ancestry_unmasked.bed",sep=" "))
+system(paste("bedtools multiinter -i ",paste(Pop_bed_names, collapse=' ',sep = " ")," > Unique_NEA_Segments/Single_sample_from_Pop_NEA_ancestry_unmasked.bed",sep=" "))
 
-system("bedtools subtract -a ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Single_sample_from_Pop_NEA_ancestry_unmasked.bed -b ~/EMH_Introgression_Project/Introgression_Detection/ref/bed/AA_Mask_joint.bed  > ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Single_sample_from_Pop_NEA_ancestry_masked.bed
-")
+system(paste0("bedtools subtract -a Unique_NEA_Segments/Single_sample_from_Pop_NEA_ancestry_unmasked.bed -b ",path_to_dryad_downloaded_files,"/AA_Mask_joint.bed  > Unique_NEA_Segments/Single_sample_from_Pop_NEA_ancestry_masked.bed
+"))
 
-Single_Sample_Pop_masked_multiinter_all_combinations <- read.table("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Single_sample_from_Pop_NEA_ancestry_masked.bed",col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_unrelated[[cluster_used]]))) %>%
+Single_Sample_Pop_masked_multiinter_all_combinations <- read.table("Unique_NEA_Segments/Single_sample_from_Pop_NEA_ancestry_masked.bed",col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_unrelated[[cluster_used]]))) %>%
   mutate(combination_names = apply(.[6:18], 1, function(x) paste(names(which(x >0)),collapse = ","))) %>%
   group_by(combination_names) %>% 
   mutate(seg_length = end - start) %>% summarize(Unique_segs_in_Mb = sum(seg_length)/1e6)
 
-Single_Sample_Pop_masked_multiinter <- read.table("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Single_sample_from_Pop_NEA_ancestry_masked.bed",col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_unrelated[[cluster_used]]))) %>%
+Single_Sample_Pop_masked_multiinter <- read.table("Unique_NEA_Segments/Single_sample_from_Pop_NEA_ancestry_masked.bed",col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_unrelated[[cluster_used]]))) %>%
   pivot_longer(!c(chrom,start,end,n_overlaps,combination),names_to = "Superpop", values_to = "count") %>% 
   filter(n_overlaps == 1, count == 1) %>% group_by(Superpop) %>% 
   mutate(seg_length = end - start) %>% summarize(Unique_segs_in_Mb = sum(seg_length)/1e6)
@@ -296,6 +317,8 @@ Single_Sample_Pop_masked_multiinter <- read.table("~/EMH_Introgression_Project/I
 ```
 
 #### Bootstrap
+
+To get the variance we can do the randomly sampeling of an individual from each population cluster over and over.
 
 ```{r eval=T,echo=F,results='hide'}
 
@@ -312,45 +335,30 @@ for(i in 1:n_bootstrap){
     #print(pop_)
     pop_ind <-  sample(Joint_Meta_unrelated$sample_name[Joint_Meta_unrelated[[cluster_used]] == pop_],1,F)
     NEA_Overlap_data = All_rle %>% filter(sample %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
-      inner_join(.,Joint_Meta_unrelated[,c("sample_name","SuperclusterF3D",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
+      inner_join(.,Joint_Meta_unrelated[,c("sample_name","superpopulation_cluster",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
       filter(sample == pop_ind) %>% mutate(start_pos = pos,end_pos = pos_end) %>% 
     mutate(pos_len = end_pos - start_pos) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
     mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,start_pos,end_pos)
     
     pop_ = gsub("&","_",pop_)
     
-    write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$id),file =paste("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,".bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
-    Pop_bed_names = c(Pop_bed_names,paste("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,".bed",sep=""))
+    write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$id),file =paste("Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,".bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
+    Pop_bed_names = c(Pop_bed_names,paste("Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,".bed",sep=""))
     
   }
 
-  system(paste("bedtools multiinter -i ",paste(Pop_bed_names, collapse=' ',sep = " ")," > ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,".bed",sep=""))
+  system(paste("bedtools multiinter -i ",paste(Pop_bed_names, collapse=' ',sep = " ")," > Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,".bed",sep=""))
   
-  system(paste0("bedtools subtract -a ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,".bed -b ~/EMH_Introgression_Project/Introgression_Detection/ref/bed/AA_Mask_joint.bed  > ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",i,".bed
+  system(paste0("bedtools subtract -a Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,".bed -b ",path_to_dryad_downloaded_files,"/AA_Mask_joint.bed  > Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",i,".bed
   "))
-  system(paste0("rm ",paste(Pop_bed_names, collapse=' ',sep = " ")," ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,".bed"))
+  system(paste0("rm ",paste(Pop_bed_names, collapse=' ',sep = " ")," Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,".bed"))
 }
 
-#for(i in 1:n_bootstrap){
-#  if(i == 1){
-#    Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap <- #read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstra#p",i,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_unrelated[[cluster_used]]))) %>%
-#  mutate(combination_names = apply(.[6:length(.)], 1, function(x) paste(names(which(x >0)),collapse = ","))) %>%
-#  group_by(combination_names,n_overlaps) %>% 
-#  mutate(seg_length = end - start) %>% summarize(Unique_segs_in_Mb = sum(seg_length)/1e6) %>% mutate(bootstrap = i)
-#  }else{
-#    x <- read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked#_bootstrap",i,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_unrelated[[cluster_used]]))) %>%
-#  mutate(combination_names = apply(.[6:length(.)], 1, function(x) paste(names(which(x >0)),collapse = ","))) %>%
-#  group_by(combination_names,n_overlaps) %>% 
-#  mutate(seg_length = end - start) %>% summarize(Unique_segs_in_Mb = sum(seg_length)/1e6)  %>% mutate(bootstrap = i)
-#    
-#  Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap <- rbind(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap,x)
-#  }
-#
-#}
+
 
 for(i in 1:n_bootstrap){
   if(i == 1){
-    Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap <- read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",i,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_unrelated[[cluster_used]]))) %>%
+    Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap <- read.table(paste0("Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",i,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_unrelated[[cluster_used]]))) %>%
   mutate(seg_length = end - start) %>%
   mutate(combination_names = apply(.[6:(length(.)-1)], 1, function(x) paste(names(which(x >0)),collapse = ","))) %>%
   mutate(across(6:(length(.)-2), ~ ifelse(. == 1, cur_column(), 0)))  %>% 
@@ -363,7 +371,7 @@ for(i in 1:n_bootstrap){
   mutate(Amount_normalized = Amount_ancestry_in_Mb / sum(Amount_ancestry_in_Mb), Total_Nea_ancestry = sum(Amount_ancestry_in_Mb)) %>% 
   mutate(Pop = ifelse(Pop == "Siberia.Americas","Siberia&Americas",Pop),Pop = gsub( "\\.", "-", Pop)) %>% mutate(bootstrap = i)
   }else{
-    x <- read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",i,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_unrelated[[cluster_used]]))) %>%
+    x <- read.table(paste0("Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",i,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_unrelated[[cluster_used]]))) %>%
   mutate(seg_length = end - start) %>%
   mutate(combination_names = apply(.[6:(length(.)-1)], 1, function(x) paste(names(which(x >0)),collapse = ","))) %>%
   mutate(across(6:(length(.)-2), ~ ifelse(. == 1, cur_column(), 0)))  %>% 
@@ -380,8 +388,6 @@ for(i in 1:n_bootstrap){
   }
 
 }
-
-#write.table(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap,"~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap.csv",quote = F,row.names = F,sep = "\t")
 
 
 write.table(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap,paste0(folder_path_data,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap.csv"),quote = F,row.names = F,sep = "\t")
@@ -404,45 +410,30 @@ for(i in 1:n_bootstrap){
     #print(pop_)
     pop_ind <-  sample(Joint_Meta_wo_Oase$sample_name[Joint_Meta_wo_Oase[[cluster_used]] == pop_],1,F)
     NEA_Overlap_data = All_rle %>% filter(sample %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
-      inner_join(.,Joint_Meta_wo_Oase[,c("sample_name","SuperclusterF3D",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
+      inner_join(.,Joint_Meta_wo_Oase[,c("sample_name","superpopulation_cluster",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
       filter(sample == pop_ind) %>% mutate(start_pos = pos,end_pos = pos_end) %>% 
     mutate(pos_len = end_pos - start_pos) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
     mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,start_pos,end_pos)
     
     pop_ = gsub("&","_",pop_)
     
-    write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$id),file =paste("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap_wo_Oase",i,".bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
-    Pop_bed_names = c(Pop_bed_names,paste("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap_wo_Oase",i,".bed",sep=""))
+    write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$id),file =paste("Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap_wo_Oase",i,".bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
+    Pop_bed_names = c(Pop_bed_names,paste("Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap_wo_Oase",i,".bed",sep=""))
     
   }
 
-  system(paste("bedtools multiinter -i ",paste(Pop_bed_names, collapse=' ',sep = " ")," > ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap_wo_Oase",i,".bed",sep=""))
+  system(paste("bedtools multiinter -i ",paste(Pop_bed_names, collapse=' ',sep = " ")," > Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap_wo_Oase",i,".bed",sep=""))
   
-  system(paste0("bedtools subtract -a ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap_wo_Oase",i,".bed -b ~/EMH_Introgression_Project/Introgression_Detection/ref/bed/AA_Mask_joint.bed  > ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap_wo_Oase",i,".bed
+  system(paste0("bedtools subtract -a Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap_wo_Oase",i,".bed -b ",path_to_dryad_downloaded_files,"/AA_Mask_joint.bed  > Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap_wo_Oase",i,".bed
   "))
-  system(paste0("rm ",paste(Pop_bed_names, collapse=' ',sep = " ")," ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap_wo_Oase",i,".bed"))
+  system(paste0("rm ",paste(Pop_bed_names, collapse=' ',sep = " ")," Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap_wo_Oase",i,".bed"))
 }
 
-#for(i in 1:n_bootstrap){
-#  if(i == 1){
-#    Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap <- #read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstra#p_wo_Oase",i,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_wo_Oase[[cluster_used]]))) %>%
-#  mutate(combination_names = apply(.[6:length(.)], 1, function(x) paste(names(which(x >0)),collapse = ","))) %>%
-#  group_by(combination_names,n_overlaps) %>% 
-#  mutate(seg_length = end - start) %>% summarize(Unique_segs_in_Mb = sum(seg_length)/1e6) %>% mutate(bootstrap = i)
-#  }else{
-#    x <- read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked#_bootstrap_wo_Oase",i,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_wo_Oase[[cluster_used]]))) %>%
-#  mutate(combination_names = apply(.[6:length(.)], 1, function(x) paste(names(which(x >0)),collapse = ","))) %>%
-#  group_by(combination_names,n_overlaps) %>% 
-#  mutate(seg_length = end - start) %>% summarize(Unique_segs_in_Mb = sum(seg_length)/1e6)  %>% mutate(bootstrap = i)
-#    
-#  Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap <- rbind(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap,x)
-#  }
-#
-#}
+
 
 for(i in 1:n_bootstrap){
   if(i == 1){
-    Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_wo_Oase <- read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap_wo_Oase",i,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_wo_Oase[[cluster_used]]))) %>%
+    Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_wo_Oase <- read.table(paste0("Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap_wo_Oase",i,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_wo_Oase[[cluster_used]]))) %>%
   mutate(seg_length = end - start) %>%
   mutate(combination_names = apply(.[6:(length(.)-1)], 1, function(x) paste(names(which(x >0)),collapse = ","))) %>%
   mutate(across(6:(length(.)-2), ~ ifelse(. == 1, cur_column(), 0)))  %>% 
@@ -455,7 +446,7 @@ for(i in 1:n_bootstrap){
   mutate(Amount_normalized = Amount_ancestry_in_Mb / sum(Amount_ancestry_in_Mb), Total_Nea_ancestry = sum(Amount_ancestry_in_Mb)) %>% 
   mutate(Pop = ifelse(Pop == "Siberia.Americas","Siberia&Americas",Pop),Pop = gsub( "\\.", "-", Pop)) %>% mutate(bootstrap = i)
   }else{
-    x <- read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap_wo_Oase",i,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_wo_Oase[[cluster_used]]))) %>%
+    x <- read.table(paste0("Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap_wo_Oase",i,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Joint_Meta_wo_Oase[[cluster_used]]))) %>%
   mutate(seg_length = end - start) %>%
   mutate(combination_names = apply(.[6:(length(.)-1)], 1, function(x) paste(names(which(x >0)),collapse = ","))) %>%
   mutate(across(6:(length(.)-2), ~ ifelse(. == 1, cur_column(), 0)))  %>% 
@@ -473,21 +464,26 @@ for(i in 1:n_bootstrap){
 
 }
 
-#write.table(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap,"~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_wo_Oase.csv",quote = F,row.names = F,sep = "\t")
-
-
 write.table(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_wo_Oase,paste0(folder_path_data,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_wo_Oase.csv"),quote = F,row.names = F,sep = "\t")
 ```
 
-## Segment Correlation vs. 
+## Segment Correlation vs. F3
+
+Here we compare the correlation of the location of segments between individuals to the outgroup F3 you can calculate f3 values using the Calculate_F3_on_1240k.Rmd script.
 
 ### Data
 
 ```{r eval=T,echo=F,results='hide'}
-SGDP_NEA_bins_raw = read.csv(paste("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/stats/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/All_bins_NEA_PresentDaySGDP_archaicadmixtureAPX.bin_called",penalty,"_min_len",min_len_present,"_min_len_pos",min_bp_len_present,"_min_n_all_SNP",min_SNP,"_min_n_SNP",min_all_SNP,".xz",sep=""))
+EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0] 
+EMH_sample_list[EMH_sample_list == "Salkhit"] <- "SalkhitArchAdm"
+Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0] 
+Present_Day_sample_list = gsub("-","\\.",Present_Day_sample_list)
+
+SGDP_NEA_bins_raw = read.csv(path_to_dryad_downloaded_files,"/ALL_NEA_bins_PP_Shared_map.csv") %>%
+  dplyr:::select(chrom,map,pos,id,!!Present_Day_sample_list)
 
 sample_list_present = Joint_Meta %>% filter(time == "present" ) %>% 
-  filter(SuperclusterF3D != "Africa") %>% dplyr::select(pop) %>% distinct()
+  filter(superpopulation_cluster != "Africa") %>% dplyr::select(pop) %>% distinct()
 
 
 joint_by_pop = merge_pop_vectors_fn(pop.list = sample_list_present$pop,
@@ -498,16 +494,18 @@ joint_by_pop = merge_pop_vectors_fn(pop.list = sample_list_present$pop,
 SGDP_NEA_bins_raw_joint_by_pop <- cbind(SGDP_NEA_bins_raw[,c(1:4)],joint_by_pop)
 
 sample_list_ancient = Joint_Meta %>% filter(ML_BP_Mean > 0) %>% 
-  filter(SuperclusterF3D != "Africa") %>% .$sample_name
+  filter(superpopulation_cluster != "Africa") %>% .$sample_name
 
-EMH_NEA_bins_raw = read.csv(paste("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/stats/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/All_bins_NEA_CurratedEMHPublished_archaicadmixtureAPX.bin_called",penalty,"_min_len",min_len_ancient,"_min_len_pos",min_bp_len_ancient,"_min_n_all_SNP",min_SNP,"_min_n_SNP",min_all_SNP,".xz",sep=""))  %>% dplyr::select(chrom,map,!!sample_list_ancient)
+EMH_NEA_bins_raw = read.csv(path_to_dryad_downloaded_files,"/ALL_NEA_bins_PP_Shared_map.csv") %>%
+   dplyr::select(chrom,map,!!EMH_sample_list)
+
 ALL_NEA_bins_raw = inner_join(SGDP_NEA_bins_raw_joint_by_pop,EMH_NEA_bins_raw,by=c("chrom","map")) 
 
 
 ALL_NEA_bins_raw <- ALL_NEA_bins_raw[,c(1:4)] %>% group_by(chrom) %>% mutate(pos_end = lead(pos)) %>% ungroup() %>% 
   mutate(pos_end = ifelse(is.na(pos_end), pos + 5000,pos_end)) %>% mutate(pos_len = pos_end - pos) %>% cbind(.,ALL_NEA_bins_raw[,c(5:length(ALL_NEA_bins_raw))])
 
-non_callable_bins <- read.csv(paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/",genetic_map,"/archaicadmixtureAPX_admixfrog_bins_ref_non_callable_bins.csv"),col.names = c("chrom","map","pos","id"))
+non_callable_bins <- read.csv(paste0(path_to_dryad_downloaded_files,"/non_callable_bins_Shared_map.csv"),col.names = c("chrom","map","pos","id"))
 
 ALL_NEA_bins_raw_masked <- anti_join(ALL_NEA_bins_raw,non_callable_bins,by="id")
 
@@ -523,26 +521,26 @@ write.csv(ALL_NEA_bins_raw_masked,paste0(folder_path_Sup_Tables,"ALL_NEA_bins_ra
 
 ### Reducing sample size to representatives of population
 
-To reduce the size of the samples displayed we choose representaives of each genetic population for present day individuals. For each genetic cluster we choose 2 present day individuals randomly.  All Ancient samples are used except direct genetic relatives of samples (AfanasievoSon1,AfanasievoSon2) or from the exact same site. Further more we exclude samples from Africa since their Neandertal ancestry is very low and the Mbuti population was used for the F3 calculations as an outgroup.
+To reduce the size of the samples displayed we choose representatives of each genetic population for present day individuals. For each genetic cluster we choose 2 present day individuals randomly.  All Ancient samples are used except direct genetic relatives of samples (AfanasievoSon1,AfanasievoSon2) or from the exact same site. Further more we exclude samples from Africa since their Neandertal ancestry is very low and the Mbuti population was used for the F3 calculations as an outgroup.
 
 
 ```{r echo=TRUE, eval=TRUE}
 
 set.seed(42)
 Present_day_sample_list = c()
-present_day_inds = Joint_Meta %>% filter(ML_BP_Mean == 0,SuperclusterF3D != "Africa") %>% distinct(ID, .keep_all = TRUE)
+present_day_inds = Joint_Meta %>% filter(ML_BP_Mean == 0,superpopulation_cluster != "Africa") %>% distinct(ID, .keep_all = TRUE)
 for(clstr in unique(present_day_inds[[cluster_used]])){
   x = sample(present_day_inds$ID[present_day_inds[[cluster_used]] == clstr],ifelse(length(present_day_inds$ID[present_day_inds[[cluster_used]] == clstr])>1,2,1),replace = F)
   Present_day_sample_list <- c(Present_day_sample_list,x)
 }
 
 
-ancient_inds_same_site = Joint_Meta %>% filter(ML_BP_Mean > 0,SuperclusterF3D != "Africa") %>%
+ancient_inds_same_site = Joint_Meta %>% filter(ML_BP_Mean > 0,superpopulation_cluster != "Africa") %>%
   mutate(Longitude = round(Longitude,2),Latitude = round(Latitude,2)) %>% 
   group_by(Longitude,Latitude) %>%
   filter(n()>1)
 
-ancient_inds_list = Joint_Meta %>% filter(ML_BP_Mean > 0,SuperclusterF3D != "Africa") %>%
+ancient_inds_list = Joint_Meta %>% filter(ML_BP_Mean > 0,superpopulation_cluster != "Africa") %>%
   mutate(Longitude = round(Longitude,2),Latitude = round(Latitude,2)) %>% 
   group_by(Longitude,Latitude) %>%
   filter(n()==1) %>% ungroup() %>% dplyr:: select(sample_name) %>% .$sample_name
@@ -583,11 +581,12 @@ rm(SGDP_NEA_bins_raw,EMH_NEA_bins_raw,SGDP_NEA_bins_raw_joint_by_pop,joint_by_po
 
 ### read in F3 values 
 
-The F3 values are precomputed for every pairwise population using Mbuti as an outgroup. The populations for present day individuals are the SGDP assigned populations and for ancient individuals it is done per individual. For all F3 only SNPs are used where at least 50 % of the ancients have data. The F3 are either computed on the archaicadmixtureAPX set or 1240k and for autosomes and X chrom separately. The estimates on the X chrom are only done using female individuals!
+The F3 values are precomputed for every pairwise population using Mbuti as an outgroup. The populations for present day individuals are the SGDP assigned populations and for ancient individuals it is done per individual. For all F3 only SNPs are used where at least 50 % of the ancients have data. The F3 are either computed on the archaicadmixtureAPX set or 1240k and for autosomes and X chrom separately. You can comute thes using the Calculate_F3_on_1240k.Rmd script (change the admixfrog reference from 1240k to archaicadmixturAPX to get F3s on the archaicadmixture sites).
 
 ```{r echo=TRUE, eval=TRUE}
 # archaicadmixtureAPX
-res_f3_gtLH_archaicadmixtureAPX_Autosomes <- read.csv(paste0("~/EMH_Introgression_Project/Introgression_Detection/Analysis/F3_stats/admixfrog0.7/Autosomes/res_f3_AF_gtLH_A1240k_",genetic_map,".csv"))
+## change the path!!!
+res_f3_gtLH_archaicadmixtureAPX_Autosomes <- read.csv(paste0("res_f3_AF_gtLH_A1240k_",genetic_map,".csv"))
 res_f3_gtLH_archaicadmixtureAPX_Autosomes[res_f3_gtLH_archaicadmixtureAPX_Autosomes == "Sahrawi"] <- "Saharawi"
 res_f3_gtLH_archaicadmixtureAPX_Autosomes[res_f3_gtLH_archaicadmixtureAPX_Autosomes == "Salkhit"] <- "SalkhitArchAdm"
 
@@ -597,11 +596,12 @@ diag(res_f3_gtLH_archaicadmixtureAPX_Autosomes_matrix) <- 0
 res_f3_gtLH_archaicadmixtureAPX_Autosomes_matrix_dis <- max(res_f3_gtLH_archaicadmixtureAPX_Autosomes_matrix)- res_f3_gtLH_archaicadmixtureAPX_Autosomes_matrix
 diag(res_f3_gtLH_archaicadmixtureAPX_Autosomes_matrix_dis) <- 0
 
+### change the path!!!
 write.csv(res_f3_gtLH_archaicadmixtureAPX_Autosomes_matrix,paste0(folder_path_Sup_Tables,"res_f3_gtLH_archaicadmixtureAPX_Autosomes_matrix.csv"),quote = F,row.names = T)
 
 # 1240k
 
-res_f3_gtLH_1240k_Autosomes <- read.csv(paste0("~/EMH_Introgression_Project/Introgression_Detection/Analysis/F3_stats/admixfrog0.7/Autosomes/res_f3_AF_gtLH_archaicadmixtureX_",genetic_map,".csv"))
+res_f3_gtLH_1240k_Autosomes <- read.csv(paste0("res_f3_AF_gtLH_archaicadmixtureX_",genetic_map,".csv"))
 res_f3_gtLH_1240k_Autosomes[res_f3_gtLH_1240k_Autosomes == "Sahrawi"] <- "Saharawi"
 res_f3_gtLH_1240k_Autosomes[res_f3_gtLH_1240k_Autosomes == "Salkhit"] <- "SalkhitArchAdm"
 
@@ -676,11 +676,6 @@ Joint_values$Cluster_comp <- ifelse(Joint_values$Var1_cluster == Joint_values$Va
 Joint_values$Cluster_comp_detail <- ifelse(Joint_values$Var1_cluster == Joint_values$Var2_cluster,Joint_values$Var1_cluster,paste(Joint_values$Var1_cluster,"other",sep="_"))
 
 
-
-
-#save(df_poporder,melted_combined_anno_red,Joint_values,All_Sample_list,file = "~/EMH_Introgression_Project/Introgression_Detection/Analysis/NEA_cor_vs_F3_plots.RData")
-
-
 save(df_poporder,melted_cormat_anno,melted_combined_anno_red,Joint_values,All_Sample_list,file = paste0(folder_path_data,"NEA_cor_vs_F3_plots.RData"))
 
 ```
@@ -717,29 +712,15 @@ Joint_values %>% mutate(clstr_x = ifelse(Var1_cluster == "EarlyOoA" | Var2_clust
 
 ## Matching Analysis
 
+Lastly we look at the matching of the segments to the reference archaic individuals. The data can be found in the Dryad repo.
 
 ```{r echo=FALSE, eval=TRUE, results='hide'}
 
-DiagSites = "MatchingAscertainment"
+
+All_rle_Matching_ascertainment <- read.csv(paste0(path_to_dryad_downloaded_files,"/Neandertal_segments_matching_references_Shared_map.csv")) %>% filter(Sites_used == "Matching_archaic_admixture") %>% mutate(sites = "all")
 
 
-dir_path_EMH <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/"),pattern = "rle0.25.match_summary.xz",full.names = T)
-
-
-dir_path_SGDP <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/Diagnostic_sites/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/"),pattern = "rle0.25.match_summary.xz",full.names = T)
-
-
-EMH_rle_all <- get_rle_files(directory_path = dir_path_EMH,split_char = "_",type_ = called_type,target_ = states,chrom_ = chrom_)  %>% 
-   filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient)
-
-
-SGDP_rle_all <- get_rle_files(dir_path_SGDP,"_archaic",type_ = called_type,target_ = states,chrom_) %>% filter(map_len >= min_len_present, pos_len >= min_bp_len_present) %>%
-  mutate(sample = gsub("-", "\\.", sample))
-
-All_rle_Matching_ascertainment <- rbind(SGDP_rle_all,EMH_rle_all) %>% mutate(sites = "all")
-
-
-MatchingRates_file_MatchingAScerteinment_anno <- inner_join(All_rle_Matching_ascertainment,Joint_Meta[,c("sample_name","SuperclusterF3D",cluster_used,"Cov","ML_BP_Mean","pop","Sex","x_chrom_captured","DataType","ave_cont")],by=c("sample"="sample_name")) %>% 
+MatchingRates_file_MatchingAScerteinment_anno <- inner_join(All_rle_Matching_ascertainment,Joint_Meta[,c("sample_name","superpopulation_cluster",cluster_used,"Cov","ML_BP_Mean","pop","Sex","x_chrom_captured","DataType","ave_cont")],by=c("sample"="sample_name")) %>% 
   mutate(time_slice = ifelse(ML_BP_Mean >= 30000,30000,ifelse(ML_BP_Mean >= 15000,15000,ifelse(ML_BP_Mean >= 5000,5000,0)))) %>%
   mutate(time_period = ifelse(ML_BP_Mean >= 15000,"pre-LGM",ifelse(ML_BP_Mean > 0,"post-LGM","Present-Day"))) %>%
   mutate(Sites = "MatchingAscertainment")
@@ -755,45 +736,16 @@ MatchingRates_file_MatchingAScerteinment_anno_non_overlapping <- inner_join(Matc
 
 MatchingRates_file_MatchingAScerteinment_anno_non_overlapping <- MatchingRates_file_MatchingAScerteinment_anno_non_overlapping %>% filter(sample != "LeangPanninge") 
 
-Bootsrtap_of_Means_MatchingAScerteinment_non_overlapping  <- list()
-n_bootstraps <- 1000
-for(i in 1:n_bootstraps){
-  Bootsrtap_of_Means_MatchingAScerteinment_non_overlapping[[i]] <- MatchingRates_file_MatchingAScerteinment_anno_non_overlapping %>% 
-    filter(chrom != "X", n_all_snps > 10) %>% 
-    group_by(!!sym(cluster_used),DataType) %>%
-    dplyr::summarize(Mean_match = mean(sample(BT_prop_pHcount_matching_Chagyrskaya_mean,size = length(BT_prop_pHcount_matching_Chagyrskaya_mean),replace = T),na.rm = T)) %>%
-    mutate(BT = i)
-  
-}
-
-Bootsrtap_of_Means_MatchingAScerteinment_non_overlapping <- do.call("rbind",Bootsrtap_of_Means_MatchingAScerteinment_non_overlapping)
-
-save(Bootsrtap_of_Means_MatchingAScerteinment_non_overlapping,file = paste0(folder_path_data,"MatchingRates_file_anno_non_overlapping_",genetic_map,"_",DiagSites,".RData"))
-
-save(Bootsrtap_of_Means_MatchingAScerteinment_non_overlapping,file = paste0(folder_path_data,"Bootsrtap_of_Means_non_overlapping",genetic_map,"_",DiagSites,".RData"))
 
 ```
 
 ```{r echo=FALSE, eval=TRUE, results='hide'}
-DiagSites = "OnlyVariable"
-
-dir_path_EMH <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/"),pattern = "rle0.25.match_summary.xz",full.names = T)
 
 
-dir_path_SGDP <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/Diagnostic_sites/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/"),pattern = "rle0.25.match_summary.xz",full.names = T)
+All_rle_OnlyVariable <- read.csv(paste0(path_to_dryad_downloaded_files,"/Neandertal_segments_matching_references_Shared_map.csv")) %>% filter(Sites_used == "All_diagnostic_sites") %>% mutate(sites = "all")
 
 
-EMH_rle_all <- get_rle_files(directory_path = dir_path_EMH,split_char = "_",type_ = called_type,target_ = states,chrom_ = chrom_)  %>% 
-   filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient)
-
-
-SGDP_rle_all <- get_rle_files(dir_path_SGDP,"_archaic",type_ = called_type,target_ = states,chrom_) %>% filter(map_len >= min_len_present, pos_len >= min_bp_len_present) %>%
-  mutate(sample = gsub("-", "\\.", sample))
-
-All_rle_OnlyVariable <- rbind(SGDP_rle_all,EMH_rle_all) %>% mutate(sites = "all")
-
-
-MatchingRates_file_OnlyVariable_anno <- inner_join(All_rle_OnlyVariable,Joint_Meta[,c("sample_name","SuperclusterF3D",cluster_used,"Cov","ML_BP_Mean","pop","Sex","x_chrom_captured","DataType","ave_cont")],by=c("sample"="sample_name")) %>% 
+MatchingRates_file_OnlyVariable_anno <- inner_join(All_rle_OnlyVariable,Joint_Meta[,c("sample_name","superpopulation_cluster",cluster_used,"Cov","ML_BP_Mean","pop","Sex","x_chrom_captured","DataType","ave_cont")],by=c("sample"="sample_name")) %>% 
   mutate(time_slice = ifelse(ML_BP_Mean >= 30000,30000,ifelse(ML_BP_Mean >= 15000,15000,ifelse(ML_BP_Mean >= 5000,5000,0)))) %>%
   mutate(time_period = ifelse(ML_BP_Mean >= 15000,"pre-LGM",ifelse(ML_BP_Mean > 0,"post-LGM","Present-Day"))) %>%
   mutate(Sites = "OnlyVariable")
@@ -809,22 +761,7 @@ MatchingRates_file_OnlyVariable_anno_non_overlapping <- inner_join(MatchingRates
 
 MatchingRates_file_OnlyVariable_anno_non_overlapping <- MatchingRates_file_OnlyVariable_anno_non_overlapping %>% filter(sample != "LeangPanninge") 
 
-Bootsrtap_of_Means_OnlyVariable_non_overlapping  <- list()
-n_bootstraps <- 1000
-for(i in 1:n_bootstraps){
-  Bootsrtap_of_Means_OnlyVariable_non_overlapping[[i]] <- MatchingRates_file_OnlyVariable_anno_non_overlapping %>% 
-    filter(chrom != "X", n_all_snps > 10) %>% 
-    group_by(!!sym(cluster_used),DataType) %>%
-    dplyr::summarize(Mean_match = mean(sample(BT_prop_pHcount_matching_Chagyrskaya_mean,size = length(BT_prop_pHcount_matching_Chagyrskaya_mean),replace = T),na.rm = T)) %>%
-    mutate(BT = i)
-  
-}
 
-Bootsrtap_of_Means_OnlyVariable_non_overlapping <- do.call("rbind",Bootsrtap_of_Means_OnlyVariable_non_overlapping)
-
-save(MatchingRates_file_OnlyVariable_anno_non_overlapping,file = paste0(folder_path_data,"MatchingRates_file_anno_non_overlapping_",genetic_map,"_",DiagSites,".RData"))
-
-save(Bootsrtap_of_Means_OnlyVariable_non_overlapping,file = paste0(folder_path_data,"Bootsrtap_of_Means_non_overlapping",genetic_map,"_",DiagSites,".RData"))
 ```
 
 ```{r echo=FALSE, eval=TRUE, results='hide'}
@@ -847,6 +784,8 @@ save(MatchingRates_file_anno_non_overlapping,file = paste0(folder_path_data,"Mat
 
 The technical validation using Kostenki14 shotgun and captured revealed no difference in either taking proportion of reads matching derived sites or proportion pseudo Haploid matching. The proportions of either derived reads per total amount of reads or the number of derived alleles per covered sites are normalized for coverage (only covered sites are counted). However the exact matching rate to a given reference genome will be influenced by the type of data. Captured data are much more likely to capture the reference allele in the "bycatched" sites then the alternative one. Hence, the match rates to an reference sample can only be compared to using the same data. However the the difference in data only shifts all matches on the diagonal but not towards a certain reference. Therefore exact match rates can only be compared using the same data type (preferably shotgun) but the attraction to a given reference compared to another (2D plot everything going of the diagonal) is comparable. Plot scripts are in the joint_plots_paper script.
 
+To execute this analysis you need to run the admixfrog pipeline for bith Kostenki14 data sets the data is not provided on the Dryad repo!.
+
 ### Technical Valdiation using Kostenki 14
 
 #### Data & Visualization
@@ -854,10 +793,10 @@ The technical validation using Kostenki14 shotgun and captured revealed no diffe
 ```{r eval=T,echo=F,results='hide'}
 ## all
 DiagSites = "all"
-K14_shotgun <- get_rle_files(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/Kostenki14Shotgun_archaicadmixtureAPX.rle0.25.match_summary.xz"),"_",c("state"),states,chrom_) %>% 
+K14_shotgun <- get_rle_files(paste0("TestLineageAssignment_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/Kostenki14Shotgun_archaicadmixtureAPX.rle0.25.match_summary.xz"),"_",c("state"),states,chrom_) %>% 
    filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient) %>% mutate(Data = "Shotgun",Cov = 2.52)
 
-K14_capture <- get_rle_files(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/Kostenki14AA_archaicadmixtureAPX.rle0.25.match_summary.xz"),"_",c("state"),states,chrom_) %>% 
+K14_capture <- get_rle_files(paste0("TestLineageAssignment_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/Kostenki14AA_archaicadmixtureAPX.rle0.25.match_summary.xz"),"_",c("state"),states,chrom_) %>% 
    filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient) %>% mutate(Data = "Capture",Cov = 16.1)
 
 Kostenki_Test_all <- rbind(K14_shotgun,K14_capture) %>% mutate(Sites = "all")
@@ -866,10 +805,10 @@ Kostenki_Test_class_all <- match_BT_fn(Kostenki_Test_all)
 
 ## OnlyVariable
 DiagSites = "OnlyVariable"
-K14_shotgun <- get_rle_files(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/Kostenki14Shotgun_archaicadmixtureAPX.rle0.25.match_summary.xz"),"_",c("state"),states,chrom_) %>% 
+K14_shotgun <- get_rle_files(paste0("TestLineageAssignment_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/Kostenki14Shotgun_archaicadmixtureAPX.rle0.25.match_summary.xz"),"_",c("state"),states,chrom_) %>% 
    filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient) %>% mutate(Data = "Shotgun",Cov = 2.52)
 
-K14_capture <- get_rle_files(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/Kostenki14AA_archaicadmixtureAPX.rle0.25.match_summary.xz"),"_",c("state"),states,chrom_) %>% 
+K14_capture <- get_rle_files(paste0("TestLineageAssignment_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/Kostenki14AA_archaicadmixtureAPX.rle0.25.match_summary.xz"),"_",c("state"),states,chrom_) %>% 
    filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient) %>% mutate(Data = "Capture",Cov = 16.1)
 
 Kostenki_Test_OnlyVariable <- rbind(K14_shotgun,K14_capture) %>% mutate(Sites = "OnlyVariable")
@@ -878,10 +817,10 @@ Kostenki_Test_class_OnlyVariable <- match_BT_fn(Kostenki_Test_OnlyVariable)
 
 ## MatchingAscertainment
 DiagSites = "MatchingAscertainment"
-K14_shotgun <- get_rle_files(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/Kostenki14Shotgun_archaicadmixtureAPX.rle0.25.match_summary.xz"),"_",c("state"),states,chrom_) %>% 
+K14_shotgun <- get_rle_files(paste0("TestLineageAssignment_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/Kostenki14Shotgun_archaicadmixtureAPX.rle0.25.match_summary.xz"),"_",c("state"),states,chrom_) %>% 
    filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient) %>% mutate(Data = "Shotgun",Cov = 2.52)
 
-K14_capture <- get_rle_files(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/Kostenki14AA_archaicadmixtureAPX.rle0.25.match_summary.xz"),"_",c("state"),states,chrom_) %>% 
+K14_capture <- get_rle_files(paste0("TestLineageAssignment_Shared_Map/Diagnostic_sites/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",DiagSites,"/Kostenki14AA_archaicadmixtureAPX.rle0.25.match_summary.xz"),"_",c("state"),states,chrom_) %>% 
    filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient) %>% mutate(Data = "Capture",Cov = 16.1)
 
 Kostenki_Test_MatchingAscertainment <- rbind(K14_shotgun,K14_capture) %>% mutate(Sites = "MatchingAscertainment")
@@ -923,6 +862,8 @@ chisq
 ```
 
 #### Modeling Bias
+
+We can model the bias using a Bayesian GLM as described in the manuscript.
 
 ```{r echo=FALSE, eval=TRUE, results='hide'}
 Kostenki_Test_class_model <- Kostenki_Test_matching %>% dplyr::select(sample,method,Highest_matching_archaic,Cov) %>% filter(Highest_matching_archaic %in% c("Altai","Chagyrskaya","Vindija33.19","Denisova"))
@@ -1078,16 +1019,18 @@ save(pop_intercepts_pois,effect_datatype,effect_method, file = paste0(folder_pat
 
 ### Autosomes
 
+Next we can check the overlall assignment of the segment in an individual to an archaic reference.
+
 ##### by whole individual
 
-Not very informative all are closest to Vindija.
+Not very informative all are closest to Vindija except Leang Panninge (very low coverage) and two post-LGM WEur individuals but the matching of Vindija and Chagyrskaya is almost the same.
 
 ```{r echo=FALSE, eval=TRUE, results='hide'}
 
 min_n_ref = 1
 
 MatchingRates_file_anno_class_ind <- MatchingRates_file_all_anno  %>% filter(target == "NEA") %>% filter(chrom != "X", n_all_snps > 10) %>% 
-  group_by(sample,SuperclusterF3D,(!!sym(cluster_used)),time_period,target,Sites) %>% summarise(
+  group_by(sample,superpopulation_cluster,(!!sym(cluster_used)),time_period,target,Sites) %>% summarise(
               all_prop_matching_Mbuti = sum(count_matching_Mbuti,na.rm = T)/sum(count_matching_Mbuti/prop_pHcount_matching_Mbuti,na.rm = T),
               all_prop_matching_Vindija33.19 = sum(count_matching_Vindija33.19,na.rm = T)/sum(count_matching_Vindija33.19/prop_pHcount_matching_Vindija33.19,na.rm = T),
               all_prop_matching_Altai = sum(count_matching_Altai,na.rm = T)/sum(count_matching_Altai/prop_pHcount_matching_Altai,na.rm = T),
@@ -1112,10 +1055,10 @@ MatchingRates_file_anno_class_ind$Highest_matching_archaic_value <- Highest_matc
 rm(Highest_matching_archaic)
 
 
-Tip_branch_matching_whole_ind_Superpop_non_overlapping <- MatchingRates_file_anno_class_ind %>%
+Tip_branch_matching_whole_ind_Ppop_non_overlapping <- MatchingRates_file_anno_class_ind %>%
   filter(Sites == "MatchingAscertainment") %>%
   ggplot(.,aes(x = factor(1),fill=factor(Highest_matching_archaic))) + 
-    facet_wrap(time_period~SuperclusterF3D,) +
+    facet_wrap(time_period~get(cluster_used),) +
     geom_bar(width = 1,position = "fill") + 
     coord_polar(theta="y") +
     theme(axis.title.x = element_blank(),
@@ -1126,7 +1069,7 @@ Tip_branch_matching_whole_ind_Superpop_non_overlapping <- MatchingRates_file_ann
     guides(fill=guide_legend(title="Highest matching:"))
 
 Tip_branch_matching_whole_ind_Ppop_non_overlapping <- MatchingRates_file_anno_class_ind %>%
-  filter(Sites == "MatchingAscertainment") %>%
+  filter(Sites == "OnlyVariable") %>%
   ggplot(.,aes(x = factor(1),fill=factor(Highest_matching_archaic))) + 
     facet_wrap(time_period~get(cluster_used),) +
     geom_bar(width = 1,position = "fill") + 
@@ -1142,6 +1085,8 @@ Tip_branch_matching_whole_ind_Ppop_non_overlapping <- MatchingRates_file_anno_cl
 ```
 
 ##### by individual segment
+
+More informative is looking at the matching of each segments.
 
 ```{r echo=FALSE, eval=TRUE, results='hide'}
 
@@ -1225,9 +1170,9 @@ save(MatchingRates_file_anno_class_BT_non_overlapping,file = paste0(folder_path_
 
 ```{r echo=FALSE, eval=TRUE, results='hide'}
 # SUPERPOPULATIONS
-MatchingRates_file_anno_class_table_non_overlapping = MatchingRates_file_anno_class_non_overlapping  %>% filter(Highest_matching_archaic %in% c("Altai", "Chagyrskaya", "Denisova", "Vindija33.19")) %>% dplyr::select(SuperclusterF3D,Highest_matching_archaic)
+MatchingRates_file_anno_class_table_non_overlapping = MatchingRates_file_anno_class_non_overlapping  %>% filter(Highest_matching_archaic %in% c("Altai", "Chagyrskaya", "Denisova", "Vindija33.19")) %>% dplyr::select(superpopulation_cluster,Highest_matching_archaic)
 
-MatchingRates_file_anno_class_table_non_overlapping = as.data.frame(table(MatchingRates_file_anno_class_table_non_overlapping)) %>% pivot_wider(names_from = Highest_matching_archaic, values_from = Freq) %>% column_to_rownames(.,var = "SuperclusterF3D") %>% dplyr::select(!Denisova)
+MatchingRates_file_anno_class_table_non_overlapping = as.data.frame(table(MatchingRates_file_anno_class_table_non_overlapping)) %>% pivot_wider(names_from = Highest_matching_archaic, values_from = Freq) %>% column_to_rownames(.,var = "superpopulation_cluster") %>% dplyr::select(!Denisova)
 
 chisq <- chisq.test(MatchingRates_file_anno_class_table_non_overlapping)
 chisq
@@ -1258,7 +1203,11 @@ round(contrib, 3)
 
 ##### Multinomial as Poisson model
 
+We can build a Bayesian GLM to check if the frequency of matching to a reference archaic individual is different between population clusters while taking into account some potential confounders. The model is described in the manuscripts.
+
 ###### Simulations
+
+First we test the model using simulated data.
 
 ```{r echo=FALSE, eval=TRUE, results='hide'}
 library(rethinking)
@@ -1833,6 +1782,8 @@ save(No_differnces_res1_diff,Differnces_in_groups_res1_diff,Differnces_in_DT_res
 
 ###### Real Data application
 
+Now we apply the model to real data. We use stan to fit it.
+
 ```{r echo=FALSE, eval=FALSE, results='hide'}
 ## RUN ON CLUSTER
 
@@ -1849,10 +1800,10 @@ MatchingRates_file_anno_class_multnomial_data <- MatchingRates_file_anno_class_B
 
 MatchingRates_file_anno_class_poisson_data_table_Supercluster <- MatchingRates_file_anno_class_multnomial_data %>%
   mutate(Highest_matching_archaic = ifelse(Highest_matching_archaic == "Vindija33.19","Vindija",Highest_matching_archaic)) %>%
-  group_by(Highest_matching_archaic,SuperclusterF3D,Cov,DataType,ML_BP_Mean,ave_cont,Sites) %>% summarise(count = n()) %>%
+  group_by(Highest_matching_archaic,superpopulation_cluster,Cov,DataType,ML_BP_Mean,ave_cont,Sites) %>% summarise(count = n()) %>%
   pivot_wider(names_from = Highest_matching_archaic, values_from = count) %>% replace(is.na(.), 0)
 
-dat_Superpop.1 <- list(popul =  as.numeric(as.factor(MatchingRates_file_anno_class_poisson_data_table_Supercluster$SuperclusterF3D)),
+dat_Superpop.1 <- list(popul =  as.numeric(as.factor(MatchingRates_file_anno_class_poisson_data_table_Supercluster$superpopulation_cluster)),
             Altai = as.numeric(MatchingRates_file_anno_class_poisson_data_table_Supercluster$Altai),
             Chagyrskaya = as.numeric(MatchingRates_file_anno_class_poisson_data_table_Supercluster$Chagyrskaya),
             Denisova = as.numeric(MatchingRates_file_anno_class_poisson_data_table_Supercluster$Denisova),
@@ -1922,7 +1873,7 @@ plotting_GLM_model_fn <- function(model_superpop,data_superpop,model_pop,data_po
   post <- extract.samples(model_superpop)
   
   pop_intercepts <- list()
-  for(grp in 1:length(unique(data_superpop$SuperclusterF3D))){
+  for(grp in 1:length(unique(data_superpop$superpopulation_cluster))){
     pop_intercepts[[grp]] <-   matrix(sapply(1:length(post$a_1[,1]), function(i) c(
       exp(post$a_1[i,grp])/(exp(post$a_1[i,grp])+exp(post$a_2[i,grp])+exp(post$a_3[i,grp])+exp(post$a_4[i,grp])),
       exp(post$a_2[i,grp])/(exp(post$a_1[i,grp])+exp(post$a_2[i,grp])+exp(post$a_3[i,grp])+exp(post$a_4[i,grp])),
@@ -1932,8 +1883,8 @@ plotting_GLM_model_fn <- function(model_superpop,data_superpop,model_pop,data_po
   }
   
   pop_int <- c()
-  for(grp in 1:length(unique(data_superpop$SuperclusterF3D))){
-    pop_int <- rbind(pop_int,data.frame(levels(as.factor(data_superpop$SuperclusterF3D))[grp],pop_intercepts[[grp]]))
+  for(grp in 1:length(unique(data_superpop$superpopulation_cluster))){
+    pop_int <- rbind(pop_int,data.frame(levels(as.factor(data_superpop$superpopulation_cluster))[grp],pop_intercepts[[grp]]))
   }
   colnames(pop_int) <- c("Pop","ALT","CHA","DEN","VIN")
   
@@ -1965,8 +1916,8 @@ plotting_GLM_model_fn <- function(model_superpop,data_superpop,model_pop,data_po
   
   
   pop_diff <- data.frame((pop_intercepts[[1]] - pop_intercepts[[1]]), pivot = 1,pop = 1)
-  for(pvt in 1:length(unique(data_superpop$SuperclusterF3D))){
-    for(grp in 1:length(unique(data_superpop$SuperclusterF3D))){
+  for(pvt in 1:length(unique(data_superpop$superpopulation_cluster))){
+    for(grp in 1:length(unique(data_superpop$superpopulation_cluster))){
       pop_diff <- rbind(pop_diff,data.frame((pop_intercepts[[grp]] - pop_intercepts[[pvt]]), pivot = pvt,pop = grp))
     }
   }
@@ -1974,8 +1925,8 @@ plotting_GLM_model_fn <- function(model_superpop,data_superpop,model_pop,data_po
   colnames(pop_diff) <- c("ALT","CHA","DEN","VIN","PivotPop","Pop")
   #pop_diff = pop_diff %>% filter(PivotPop != Pop)
   for(i in unique(pop_diff$PivotPop)){
-    pop_diff$PivotPop[pop_diff$PivotPop == i] <- levels(as.factor(data_superpop$SuperclusterF3D))[i]
-    pop_diff$Pop[pop_diff$Pop == i] <- levels(as.factor(data_superpop$SuperclusterF3D))[i]
+    pop_diff$PivotPop[pop_diff$PivotPop == i] <- levels(as.factor(data_superpop$superpopulation_cluster))[i]
+    pop_diff$Pop[pop_diff$Pop == i] <- levels(as.factor(data_superpop$superpopulation_cluster))[i]
     
   }
   
@@ -2101,9 +2052,9 @@ save(plot_data_m.1,file = paste0(folder_path_data,"Pois_model_summary_bootstrap_
 ## parameter est
 
 Superpop_list <- c()
-for(grp in 1:length(unique(MatchingRates_file_anno_class_poisson_data_table_Supercluster$SuperclusterF3D))){
+for(grp in 1:length(unique(MatchingRates_file_anno_class_poisson_data_table_Supercluster$superpopulation_cluster))){
   for(arch in c("ALT","CHA","DEN","VIN")){
-    Superpop_list <- c(Superpop_list,paste0(levels(as.factor(MatchingRates_file_anno_class_poisson_data_table_Supercluster$SuperclusterF3D))[grp],"_raw_prop_",arch))
+    Superpop_list <- c(Superpop_list,paste0(levels(as.factor(MatchingRates_file_anno_class_poisson_data_table_Supercluster$superpopulation_cluster))[grp],"_raw_prop_",arch))
   }
 }
 
@@ -2140,7 +2091,7 @@ plotting_GLM_model_intercept_fn <- function(model_superpop,data_superpop,model_p
   post <- extract.samples(model_superpop)
   
   pop_intercepts <- list()
-  for(grp in 1:length(unique(data_superpop$SuperclusterF3D))){
+  for(grp in 1:length(unique(data_superpop$superpopulation_cluster))){
     pop_intercepts[[grp]] <-   matrix(sapply(1:length(post$a_1[,1]), function(i) c(
       exp(post$a_1[i,grp])/(exp(post$a_1[i,grp])+exp(post$a_2[i,grp])+exp(post$a_3[i,grp])+exp(post$a_4[i,grp])),
       exp(post$a_2[i,grp])/(exp(post$a_1[i,grp])+exp(post$a_2[i,grp])+exp(post$a_3[i,grp])+exp(post$a_4[i,grp])),
@@ -2150,8 +2101,8 @@ plotting_GLM_model_intercept_fn <- function(model_superpop,data_superpop,model_p
   }
   
   pop_int <- c()
-  for(grp in 1:length(unique(data_superpop$SuperclusterF3D))){
-    pop_int <- rbind(pop_int,data.frame(levels(as.factor(data_superpop$SuperclusterF3D))[grp],pop_intercepts[[grp]]))
+  for(grp in 1:length(unique(data_superpop$superpopulation_cluster))){
+    pop_int <- rbind(pop_int,data.frame(levels(as.factor(data_superpop$superpopulation_cluster))[grp],pop_intercepts[[grp]]))
   }
   colnames(pop_int) <- c("Pop","ALT","CHA","DEN","VIN")
   
@@ -2271,6 +2222,8 @@ save(plot_data_m.1,plot_data_m.2,plot_data_m.3,plot_data_m.4,file = paste0(folde
 
 ##### Fitting one or two normal distributions
 
+We can also look at the mismatch distribution to the Chagyrskaya Neandertal and estimate if one or two distributions give a better fit. We restrict to segments with at least 15 sites that are informative to reduce the noise in the data. Furthermore we constrain to segments with a match rate of 0.3 to reduce potentail false positives. To fit two distribution a simple EM is used. To prevent numerical underflow we set 0 value to a small number of 1e-12.
+
 ##### For match to Chagyrskaya
 
 ```{r echo=FALSE, eval=TRUE, results='hide'}
@@ -2298,16 +2251,16 @@ match_rates_likelihood_mixture <- function(params, data) {
 }
 
 
-# EM algorithm for fitting a mixture of two Gaussian distributions
+# EM algorithm for fitting a mixture of two Gaussian distributions to the match rate
 EM_algorithm <- function(data, initial_params, max_iter = 1000, tol = 1e-8,constrain = F) {
   n <- length(data)
   
-  # Initialize parameters
+  # parameters
   mu <- initial_params$mu
   sigma <- initial_params$sigma
   weight <- initial_params$weight
   
-  # EM iterations
+  
   for (iter in 1:max_iter) {
 
     # E-step: Calculate responsibilities
@@ -2336,10 +2289,6 @@ EM_algorithm <- function(data, initial_params, max_iter = 1000, tol = 1e-8,const
     
     # Constrain means to meet the conditions: mu_i + 3*sigma_i < 1 and mu_i - 3*sigma_i > 0
     if(constrain){
-      #mu[1] <- ifelse(mu[1] + 3*sigma[1] < 1 && mu[1] - 3*sigma[1] > 0,mu[1],prev_mu[1])
-      #sigma[1] <- ifelse(mu[1] + 3*sigma[1] < 1 && mu[1] - 3*sigma[1] > 0,sigma[1],prev_sigma[1])
-      #mu[2] <- ifelse(mu[2] + 3*sigma[2] < 1 && mu[2] - 3*sigma[2] > 0,mu[2],prev_mu[2])
-      #sigma[2] <- ifelse(mu[2] + 3*sigma[2] < 1 && mu[2] - 3*sigma[2] > 0,sigma[2],prev_sigma[2])
       sigma[1] <- ifelse(sigma[1] == 0,1e-12,sigma[2])
       sigma[2] <- ifelse(sigma[2] == 0,1e-12,sigma[2])
     }
@@ -2354,8 +2303,6 @@ EM_algorithm <- function(data, initial_params, max_iter = 1000, tol = 1e-8,const
   # Compute log-likelihood
   log_likelihood <- sum(log(weight * dnorm(data, mean = mu[1], sd = sigma[1]) + (1 - weight) * dnorm(data, mean = mu[2], sd = sigma[2])))
   
-  
-  # Return the final parameters and log-likelihood
   return(list(par = c(mu[1],mu[2], sigma[1],sigma[2],  weight), log_likelihood = -log_likelihood))
 }
 
