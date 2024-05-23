@@ -87,7 +87,7 @@ For present day individuals you need the Merged_PresentDaySGDP_A1240k_allele_sta
 
 ```{r eval=T,echo=F, result='hide'}
 ## Meta data
-Joint_Meta <- read.csv(paste0(path_to_dryad_downloaded_files,"Meta_Data_individuals.csv")) %>%
+Joint_Meta <- read.csv(paste0(path_to_dryad_downloaded_files,"/Meta_Data_individuals.csv")) %>%
   mutate(sample_name=gsub( "\\.", "-", sample_name)) %>% mutate(sample_name=gsub( "SalkhitArchAdm", "Salkhit", sample_name)) 
 Joint_Meta$pop <- ifelse(is.na(Joint_Meta$SGDP_pop),Joint_Meta$sample_name,Joint_Meta$SGDP_pop)
 Africans = Joint_Meta$pop[Joint_Meta$SGDP_Superpop == "Africa"]
