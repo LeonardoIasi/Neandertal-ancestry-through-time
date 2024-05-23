@@ -1,0 +1,187 @@
+---
+title: "Calculate_F3_on_1240k"
+output: html_document
+date: "2024-05-23"
+---
+
+# Calculate outgroup F3 on 1240k sites
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Functions and parameter
+
+The calculations for all pairwise F3 are done using ADMIXTOOLS2 . We only consider sites where at least half of the ancient individuals have SNP information. The F2 from which all the F3's are calculated are done so with parameters:
+ * maxmiss = 1
+ * auto_only = T
+ * adjust_pseudohaploid = FALSE
+ * fst=FALSE
+ * apply_corr=FALSE
+ 
+
+```{r eval=T,echo=F, result='hide'}
+library(admixr)
+library(tidyverse)
+library("admixtools")
+library("genio")
+
+'%notin%' <- Negate('%in%')
+
+ancientMissingness = 0.5
+
+map = "Shared_Map"
+
+############## change path  ##################
+folder = paste0("Result_folder_name/EIGENSTRAT_filtered_files/",map,"/")
+
+path_to_output_file = "Results_F3_A1240k"
+
+path_to_dryad_downloaded_files = "Dryad_folder"
+
+path_to_my_admixfrog_folder_ancient = "Admixfrog_res_ancient"
+
+path_to_my_admixfrog_folder_present = "Admixfrog_res_present"
+##############################################
+
+get_EIGEN_from_joint_Admixfrog <- function(allele_states,fileprefix){
+  allele_states$chrom <- as.numeric(ifelse(allele_states$chrom == "X" ,23,allele_states$chrom))
+  allele_states <- allele_states[order(allele_states$chrom,allele_states$pos),]
+  snp_file <- data.frame(paste(allele_states$chrom,allele_states$pos,sep = "_"),allele_states$chrom,allele_states$pos*1e-8,allele_states$pos)
+  
+  ind_names = colnames(allele_states)[6:length(colnames(allele_states))]
+  pop_names = c()
+  for(i in ind_names){
+    if (startsWith(i,"S_") | startsWith(i,"B_"))
+      pop_names = c(pop_names,str_sub(str_split(i,"\\.")[[1]][1],3))  
+    
+    
+    else
+      pop_names = c(pop_names,i)  
+  }
+  
+  
+  
+  ind_file = data.frame(colnames(allele_states)[6:length(colnames(allele_states))],"U",pop_names)
+  allele_states_geno <- as.matrix(allele_states[6:length(allele_states)])
+  allele_states_geno <- matrix(as.numeric(allele_states_geno),
+                               ncol = ncol(allele_states_geno))
+  allele_states_geno[allele_states_geno == 0] <- 2
+  allele_states_geno[allele_states_geno == 1] <- 0
+  allele_states_geno[allele_states_geno == 0.5] <- 1
+  allele_states_geno[is.na(allele_states_geno)]<-9
+  
+  write.table(snp_file,paste(fileprefix,".snp",sep=""),quote = F,row.names = F,col.names = F,sep="\t")
+  write.table(ind_file,paste(fileprefix,".ind",sep=""),quote = F,row.names = F,col.names = F,sep="\t")
+  write.table(allele_states_geno,paste(fileprefix,".geno",sep=""),quote = F,row.names = F,col.names = F,sep="")
+  
+}
+
+```
+
+## Data
+
+You need the Meta_Data_individuals.csv from the Dryad repo and the ref_A1240k_hs37mMask35to99.csv.xz admixfrog reference file. 
+For anceint individuals you need the MergedOutput_CurratedEMHPublishedA1240k_A1240k_allele_state.csv for the map you want (here we use the Shared_map but for the genotype likelyhoods it should not matter much which map is used) with the 1240k admixfrog reference. The file is produced by the exec_admixfrog_bam_snakemake.py which executes the admixfrog pipeline for bam fils.
+For present day individuals you need the Merged_PresentDaySGDP_A1240k_allele_state.csv. The file is produced by the exec_admixfrog_singleVCF_snakemake.py which executes the admixfrog pipeline for bam fils.
+
+```{r eval=T,echo=F, result='hide'}
+## Meta data
+Joint_Meta <- read.csv(paste0(path_to_dryad_downloaded_files,"Meta_Data_individuals.csv")) %>%
+  mutate(sample_name=gsub( "\\.", "-", sample_name)) %>% mutate(sample_name=gsub( "SalkhitArchAdm", "Salkhit", sample_name)) 
+Joint_Meta$pop <- ifelse(is.na(Joint_Meta$SGDP_pop),Joint_Meta$sample_name,Joint_Meta$SGDP_pop)
+Africans = Joint_Meta$pop[Joint_Meta$SGDP_Superpop == "Africa"]
+
+## Admixfrog reference
+admixfrog_ref <- read.csv(paste0(path_to_dryad_downloaded_files,"ref_A1240k_hs37mMask35to99.csv.xz")) %>% 
+  mutate(ALT = ifelse(is.nan(ALT_alt/(ALT_ref + ALT_alt)),NA,ALT_alt/(ALT_ref + ALT_alt)),
+         VIN = ifelse(is.nan(VIN_alt/(VIN_ref + VIN_alt)),NA,VIN_alt/(VIN_ref + VIN_alt)),
+         CHA = ifelse(is.nan(CHA_alt/(CHA_ref + CHA_alt)),NA,CHA_alt/(CHA_ref + CHA_alt)),
+         DEN = ifelse(is.nan(DEN_alt/(DEN_ref + DEN_alt)),NA,DEN_alt/(DEN_ref + DEN_alt)),
+         PAN = ifelse(is.nan(PAN_alt/(PAN_ref + PAN_alt)),NA,PAN_alt/(PAN_ref + PAN_alt))) %>% dplyr::select(c(chrom,pos,map,ref,alt,ALT,VIN,CHA,DEN,PAN))
+admixfrog_ref$chrom <- as.character(admixfrog_ref$chrom)
+
+## input from admixfrog bam pipeline
+allele_states_EMH_from_output <- read.csv(paste0(path_to_my_admixfrog_folder_ancient,"/",map,"/MergedOutput_CurratedEMHPublishedA1240k_A1240k_allele_state.csv")) %>%
+  dplyr::select(!c(ALT,VIN,DEN,AFR,PAN))
+allele_states_EMH_from_output$chrom <- as.character(allele_states_EMH_from_output$chrom)
+
+
+## input from admixfrog singleVCF pipeline
+allele_states_PD <- read.csv(path_to_my_admixfrog_folder_present,"/samples/length_bin_15/Merged_PresentDaySGDP_A1240k_allele_state.csv") %>%
+  dplyr::select(!c(ALT,VIN,DEN,AFR,PAN))
+allele_states_PD$chrom <- as.character(allele_states_PD$chrom) 
+colnames(allele_states_PD) <- colnames(allele_states_PD) %>% gsub("_A1240k_VCF.in.xz","",.)
+All_allele_states <-inner_join(admixfrog_ref,allele_states_EMH_from_output,by=c("chrom"="chrom","pos"="pos"))
+All_allele_states <-inner_join(All_allele_states,allele_states_PD,by=c("chrom"="chrom","pos"="pos")) 
+All_allele_states_filtered <-  All_allele_states %>% 
+  filter(rowSums(is.na(.[,Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]])) < (ncol(.[,Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]]) *  ancientMissingness))
+rm(admixfrog_ref,allele_states_EMH_from_output,allele_states_PD)
+
+```
+
+## Compute outgroup F3 for the autosomes
+
+```{r eval=T,echo=F, result='hide'}
+get_EIGEN_from_joint_Admixfrog(All_allele_states_filtered,paste(folder,"admixfrog0.7/All_EMH_Project_gtLH_A1240k_EIGEN",sep=""))
+
+
+### Using ADMIXTOOLS2
+
+prefix_EIGENSTRAT = paste(folder,"admixfrog0.7/All_EMH_Project_gtLH_A1240k_EIGEN",sep="")
+PLINK_format = paste(folder,"admixfrog0.7/All_EMH_Project_gtLH_A1240k_PLINK",sep="")
+
+packedancestrymap_to_plink(
+  prefix_EIGENSTRAT,
+  PLINK_format,
+  inds = NULL,
+  pops = NULL,
+  verbose = TRUE
+)
+
+fam_file = read.table(paste(folder,"admixfrog0.7/All_EMH_Project_gtLH_A1240k_PLINK.fam",sep=""),header=F)
+
+ind_names = c()
+for(i in fam_file$V2){
+  if (startsWith(i,"S_") | startsWith(i,"B_"))
+    ind_names = c(ind_names,str_split(i,"_A1240")[[1]][1]  )
+  
+  
+  else
+    ind_names = c(ind_names,i)  
+}
+
+pop_names = c()
+for(i in fam_file$V1){
+  if (startsWith(i,"S_") | startsWith(i,"B_"))
+    pop_names = c(pop_names,str_sub(str_split(i,"\\.")[[1]][1],3))  
+  
+  
+  else
+    pop_names = c(pop_names,i)  
+}
+
+fam_file$V1 <- pop_names
+fam_file$V2 <- ind_names
+
+write.table(fam_file,paste(folder,"admixfrog0.7/All_EMH_Project_gtLH_A1240k_PLINK.fam",sep=""),
+            quote = F,col.names = F,row.names = F,sep="\t")
+
+
+
+PLINK_prefix = paste(folder,"admixfrog0.7/All_EMH_Project_gtLH_A1240k_PLINK",sep="")
+
+out_dir = paste(folder,"admixfrog0.7/F2_gtLH_A1240k_Autosomes/",sep="")
+
+extract_f2(PLINK_prefix, out_dir,maxmiss = 1,auto_only = T, n_cores = 40,adjust_pseudohaploid = FALSE,fst=FALSE,apply_corr=FALSE)
+
+fam_file = read.table(paste(folder,"admixfrog0.7/All_EMH_Project_gtLH_A1240k_PLINK.fam",sep=""))
+Outgroup_pop = "Mbuti"
+pop_i = fam_file %>% filter(V1 %notin% c(Africans,"ref","alt","ALT","PAN","CHA","VIN","DEN")) %>% dplyr::select(V1) %>% distinct()
+pop_j = fam_file %>% filter(V1 %notin% c(Africans,"ref","alt","ALT","PAN","CHA","VIN","DEN")) %>% dplyr::select(V1) %>% distinct()
+
+res_f3_AF_gtLH = f3(paste(folder,"admixfrog0.7/F2_gtLH_A1240k_Autosomes/",sep=""),Outgroup_pop,pop_i$V1,pop_j$V1,unique_only = T,verbose = T)
+
+
+write.csv(res_f3_AF_gtLH,paste0(path_to_output_file,"/res_f3_AF_gtLH_A1240k_",map,".csv"),quote = F,row.names = F)
+```

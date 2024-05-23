@@ -14,6 +14,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 For our analysis we need to group individuals for e.g. get frequencies of Neandertal ancestry. We can do this by time. For this we rely on radiocarbon dates. But we can also do it for populations. To define population on a continental or sub-continental level one could simply take the sampling location. But since people tend to move around during (pre-) history we know that people at the same sample location over time are not necessarily genetically close. Hence we are grouping individuals using their genetic information. To do that efficiently we use sites of the 1240k array which is especially good in capturing in-human diversity (but bad for Archaic ancestry). We use the genotype likelihoods provided by admixfrog for ancient individuals (here we take the genotype with the highest LH) and the genotypes given for the SGDP individuals, to calculate all pairwise outgroup F3 statistics with MButi as the outgroup. F3's for all SGDP individuals are done on their pre-assigned SGDP populations.
 
+The Meta_Data_individuals.csv which you can get from the Dryad repo already has the clustered populations!!!
+
 ## Functions
 
 ```{r eval=T,echo=F, result='hide'}
@@ -25,112 +27,17 @@ library(tidyverse)
 library(viridis)
 library(ggrepel)})
 
-# folder
-folder_path = "~/EMH_Introgression_Project/Introgression_Detection/Paper_Figures/Supplement/"
+
+############## change path  ##################
+folder_path = "Result_folder_get_pops"
+
+path_to_F3_input_file = "Results_F3_A1240k"
+
+path_to_dryad_downloaded_files = "Dryad_folder"
+
+##############################################
 
 '%notin%' <- Negate('%in%')
-
-PAM_check_k<- function(F3_matrix,max_k,gap_stat=F){
-  
-  x1 <- fviz_nbclust(F3_matrix, pam, method = "silhouette",k.max = max_k,nboot = 100)
-  x2 <- fviz_nbclust(F3_matrix, pam, method = "wss",k.max = max_k,nboot = 100)
-  if(gap_stat == T){
-    x3 <- fviz_nbclust(F3_matrix, pam, method = "gap_stat",k.max = max_k,nboot = 100)
-    return(list(x1,x2,x3))    
-  }
-  else{
-    return(list(x1,x2))  
-  }
-  
-}
-
-PAM_check_k<- function(F3_matrix,max_k,gap_stat=F){
-  
-  x1 <- fviz_nbclust(F3_matrix, pam, method = "silhouette",k.max = max_k,nboot = 100)
-  x2 <- fviz_nbclust(F3_matrix, pam, method = "wss",k.max = max_k,nboot = 100)
-  if(gap_stat == T){
-    x3 <- fviz_nbclust(F3_matrix, pam, method = "gap_stat",k.max = max_k,nboot = 100)
-    return(list(x1,x2,x3))    
-  }
-  else{
-    return(list(x1,x2))  
-  }
-  
-}
-
-kmeans_check_k<- function(F3_matrix,max_k,gap_stat=F){
-  
-  x1 <- fviz_nbclust(F3_matrix, kmeans, method = "silhouette",k.max = max_k,nboot = 100)
-  x2 <- fviz_nbclust(F3_matrix, kmeans, method = "wss",k.max = max_k,nboot = 100)
-  if(gap_stat == T){
-    x3 <- fviz_nbclust(F3_matrix, kmeans, method = "gap_stat",k.max = max_k,nboot = 100)
-    return(list(x1,x2,x3))    
-  }
-  else{
-    return(list(x1,x2))  
-  }
-  
-}
-
-MDS_with_PAM_clusters <- function(F3_matrix,F3_matrix_dis,k,only_cluster=F){
-  F3_MDS_frags <- as.data.frame(cmdscale(
-    as.dist(F3_matrix_dis),
-    k=10,eig = T)$points)
-  
-  pam_fit <- cluster::pam(
-    dist(F3_matrix,method = "euclidean"),
-    #F3_matrix,
-    diss = TRUE, k = k)
-  
-  F3_MDS_frags$cluster <- pam_fit$clustering
-  
-  F3_MDS_frags_anno <- F3_MDS_frags %>% mutate(sample_name=colnames(F3_matrix)) %>%
-    inner_join(.,Joint_Meta,by=c("sample_name"="F3_pop_annotation")) %>%
-    filter(duplicated(sample_name) == FALSE)
-  
-  MDS_clustered <- ggplot(data=F3_MDS_frags_anno, aes(x=V1, y=V2,color=as.factor(cluster),label= sample_name)) +
-    geom_point() +
-    xlab("K1") +
-    ylab("K2") +
-    geom_text(hjust=0, vjust=0) +
-    theme(legend.position = "none")
-  if(only_cluster == T){
-    return(F3_MDS_frags_anno[,c("sample_name","cluster")])
-  }
-  else{
-    return(MDS_clustered)
-  }
-  
-}
-
-MDS_with_kmeans_clusters <- function(F3_matrix,F3_matrix_dis,k,only_cluster=F){
-  F3_MDS_frags <- as.data.frame(cmdscale(
-    as.dist(F3_matrix_dis),
-    k=10,eig = T)$points)
-  
-  kmeans_fit <- kmeans(
-    F3_matrix,centers = k)
-  
-  F3_MDS_frags$cluster <- kmeans_fit$cluster
-  
-  F3_MDS_frags_anno <- F3_MDS_frags %>% mutate(sample_name=colnames(F3_matrix)) %>%
-    inner_join(.,Joint_Meta,by=c("sample_name"="F3_pop_annotation")) %>%
-    filter(duplicated(sample_name) == FALSE)
-  
-  MDS_clustered <- ggplot(data=F3_MDS_frags_anno, aes(x=V1, y=V2,color=as.factor(cluster),label= sample_name)) +
-    geom_point() +
-    xlab("K1") +
-    ylab("K2") +
-    geom_text(hjust=0, vjust=0) +
-    theme(legend.position = "none")
-  if(only_cluster == T){
-    return(F3_MDS_frags_anno[,c("sample_name","cluster")])
-  }
-  else{
-    return(MDS_clustered)
-  }
-  
-}
 
 HC_Dendrogram <- function(F3_matrix_dis,max_tree_hight=NULL,k=NULL,only_cluster=F){
   hc <- hclust(as.dist(F3_matrix_dis))
@@ -177,7 +84,7 @@ reorder_F3 <- function(F3_dis){
 
 ## Read in Data
 
-The calculations for all pairwise F3 are done using ADMIXTOOLS2 (in the script home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/Analysis/Calculate_F3_on_1240k.R). We only consider sites where at least half of the ancient individuals have SNP information. The F2 from which all the F3's are calculated are done so with parameters:
+The calculations for all pairwise F3 are done using ADMIXTOOLS2 (in the script Calculate_F3_on_1240k.Rmd). We only consider sites where at least half of the ancient individuals have SNP information. The F2 from which all the F3's are calculated are done so with parameters:
  * maxmiss = 1
  * auto_only = T
  * adjust_pseudohaploid = FALSE
@@ -188,14 +95,12 @@ We construct a n x n matrix of pairwise F3's distances. The distance is given by
 
 ```{r eval=T,echo=F, result='hide'}
 # sample meta information
-Joint_Meta <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data.csv",sep = ",") %>% mutate(F3_pop_annotation = ifelse(ML_BP_Mean == 0 ,pop,sample_name)) 
-Joint_Meta$pop[Joint_Meta$pop == "Sahrawi"] = "Saharawi"
-Joint_Meta$F3_pop_annotation[Joint_Meta$F3_pop_annotation == "Sahrawi"] = "Saharawi"
+Joint_Meta <- read.csv(paste0(path_to_dryad_downloaded_files,"/Meta_Data_individuals.csv",sep = ",")) %>% mutate(F3_pop_annotation = ifelse(ML_BP_Mean == 0 ,SGDP_pop,sample_name)) 
 Joint_Meta = Joint_Meta %>%  mutate(ID = c(Joint_Meta$pop[Joint_Meta$ML_BP_Mean == 0],Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]))
 
 # All together
 
-res_f3_gtLH_Autosomes <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Analysis/F3_stats/admixfrog0.7/Autosomes/res_f3_AF_gtLH_A1240k_Shared_Map.csv")
+res_f3_gtLH_Autosomes <- read.csv(paste0(path_to_F3_input_file,"/res_f3_AF_gtLH_A1240k_Shared_Map.csv"))
 res_f3_gtLH_Autosomes[res_f3_gtLH_Autosomes == "Salkhit"] <- "SalkhitArchAdm"
 res_f3_gtLH_Autosomes_matrix_full = res_f3_gtLH_Autosomes %>% dplyr::select(c(pop2,pop3,est)) %>% pivot_wider(names_from = pop3, values_from = est) %>% column_to_rownames(.,"pop2") %>% as.matrix()
 res_f3_gtLH_Autosomes_red <-  res_f3_gtLH_Autosomes %>% filter(pop2 %notin% c("AfanasievoSon2","AfanasievoFather","AfanasievoMother"),pop3 %notin% c("AfanasievoSon2","AfanasievoFather","AfanasievoMother"))
@@ -411,7 +316,7 @@ F3_MDS_frags_anno <- F3_MDS_frags %>% mutate(sample_name=colnames(res_f3_gtLH_Au
   inner_join(.,Joint_Meta,by=c("sample_name"="F3_pop_annotation")) %>% filter(duplicated(sample_name) == FALSE) %>% 
   inner_join(.,hc_cluster_ALL,by=c("sample_name"="samples"))
 
-write.csv(F3_MDS_frags_anno,"~/EMH_Introgression_Project/Introgression_Detection/Analysis/Genetic_clustering_F3_MDS_anno.csv",quote = F,row.names = F)
+write.csv(F3_MDS_frags_anno,paste0(folder_path,"/Genetic_clustering_F3_MDS_anno.csv"),quote = F,row.names = F)
 
 MDS_Supercluster <- F3_MDS_frags_anno %>% filter(sample_name != "OaseNew") %>%
   ggplot(data= ., aes(x=V1, y=V2,color=Supercluster,label= sample_name,shape=Supercluster)) +
@@ -442,19 +347,8 @@ Joint_Meta <- left_join(Joint_Meta,hc_cluster_ALL,by=c("F3_pop_annotation"="samp
 Joint_Meta$clusterF3D_broad[is.na(Joint_Meta$clusterF3D)] <- "Sub-Sahara-Africa"
 Joint_Meta$SuperclusterF3D[is.na(Joint_Meta$SuperclusterF3D)] <- "Africa"
 
-write.csv(Joint_Meta,"~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clusters_using_1240k.csv",quote = F,row.names = F)
+write.csv(Joint_Meta,paste(folder_path,"Joint_Meta_data_genetic_clusters_using_1240k.csv"),quote = F,row.names = F)
 
 ```
 
-## Write output files
 
-```{r eval=F,echo=F, result='hide'}
-write.csv(Joint_Meta,"~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clustersF3d1240k.csv",quote = F,row.names = F)
-
-Joint_Meta2 <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clustersED.csv") %>% mutate(PCA_pops = ifelse(ML_BP_Mean == 0 ,pop,sample_name))
-Joint_Meta2 <- Joint_Meta2 %>% dplyr::distinct()
-Joint_Meta2 <- inner_join(Joint_Meta2,Joint_Meta[,c("sample_name","SuperclusterF3D","clusterF3D")],by="sample_name")
-
-write.csv(Joint_Meta2,"~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clusters_using_1240k.csv",quote = F,row.names = F)
-
-```
