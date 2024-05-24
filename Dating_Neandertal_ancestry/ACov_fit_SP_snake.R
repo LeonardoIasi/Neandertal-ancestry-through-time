@@ -10,12 +10,14 @@ library(reshape)
 
 # functions
 
-source("~/EMH_Introgression_Project/Introgression_Detection/scripts/Analysis_R_functions.R")
+source("Neandertal-ancestry-through-time/Analysis/Analysis_R_functions.R")
+
 
 
 ### input Snakemake
 
 Meta = snakemake@input$meta_data
+input_file_folder = snakemake@input$input_folder
 
 map_ = snakemake@wildcards$Map
 trunc_ = snakemake@wildcards$truncation
@@ -48,9 +50,6 @@ Archeaology_first_humans = max(c(Protoaurignacian_start,TransitionalIndustry_sta
 Archeaology_last_neandertals = min(c(Chatelperronian_extinction,Neandertal_extinction_Djakovic,Nenadertal_extinction_Higham)) / gen_time
 
 samples = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean >= min_age_BP]
-
-
-input_file_folder = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/",map_,"_moorjani_et_al/")
 
 
 if(exclude_ == "None"){

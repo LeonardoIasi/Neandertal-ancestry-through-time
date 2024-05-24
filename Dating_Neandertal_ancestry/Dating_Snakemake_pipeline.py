@@ -6,6 +6,7 @@ import numpy as np
 configfile: "config/Dating.yml"
 
 ####
+path_to_Dryad_folder = "my_path"
 Folder_name = "Dating_Results"
 set_gen_time = 28
 ###
@@ -14,7 +15,8 @@ set_gen_time = 28
 
 rule Single_fit_ACov_EP:
     input:
-        meta_data = "path_to/Joint_Meta_data_genetic_clusters_using_1240k.csv"
+        meta_data = "{path_to_Dryad_folder}/Meta_Data_individuals.csv",
+        input_folder = "{path_to_Dryad_folder}/Ancestry_Covariance_Data_Shared_map/Shared_Map_moorjani_et_al"
     params:
         gen_time = set_gen_time,
         step_size_td = 1,
@@ -100,7 +102,8 @@ rule merge_all_res_files_ACov_Singlesample_EP_SP_JKchrom:
 
 rule fit_ACov_EP:
     input:
-        meta_data = "path_to/Joint_Meta_data_genetic_clusters_using_1240k.csv"
+        meta_data = "{path_to_Dryad_folder}/Meta_Data_individuals.csv",
+        input_folder = "{path_to_Dryad_folder}/Ancestry_Covariance_Data_Shared_map/Shared_Map_moorjani_et_al"
     params:
         gen_time = set_gen_time,
         step_size_td = 1,
@@ -137,7 +140,8 @@ rule merge_all_res_files_ACov_EP:
 
 rule fit_ACov_SP:
     input:
-        meta_data = "path_to/Joint_Meta_data_genetic_clusters_using_1240k.csv"
+        meta_data = "{path_to_Dryad_folder}/Meta_Data_individuals.csv",
+        input_folder = "{path_to_Dryad_folder}/Ancestry_Covariance_Data_Shared_map/Shared_Map_moorjani_et_al"
     params:
         gen_time = set_gen_time,
     output:
@@ -172,7 +176,8 @@ rule merge_all_res_files_ACov_SP:
 
 rule fit_EP_ACov_JKchrom:
     input:
-        meta_data = "path_to/Joint_Meta_data_genetic_clusters_using_1240k.csv"
+        meta_data = "{path_to_Dryad_folder}/Meta_Data_individuals.csv",
+        input_folder = "{path_to_Dryad_folder}/Ancestry_Covariance_Data_Shared_map/Shared_Map_moorjani_et_al"
     params:
         gen_time = set_gen_time,
         step_size_td = 1,
@@ -215,7 +220,8 @@ rule merge_all_res_files_ACov_EP_JKchrom:
 
 rule fit_Seg_SP:
     input:
-        meta_data = "path_to/Joint_Meta_data_genetic_clusters_using_1240k.csv"
+        meta_data = "{path_to_Dryad_folder}/Meta_Data_individuals.csv",
+        input_folder = "{path_to_Dryad_folder}/ALL_called_ancestry_segments.csv"
     params:
         gen_time = set_gen_time
     output:

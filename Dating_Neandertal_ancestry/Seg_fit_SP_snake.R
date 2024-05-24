@@ -10,12 +10,13 @@ library(reshape)
 
 # functions
 
-source("~/EMH_Introgression_Project/Introgression_Detection/scripts/Analysis_R_functions.R")
+source("Neandertal-ancestry-through-time/Analysis/Analysis_R_functions.R")
 
 
 ### input Snakemake
 
 Meta = snakemake@input$meta_data
+input_file_folder = snakemake@input$input_folder
 
 map_ = snakemake@wildcards$Map
 exclude_ = strsplit(snakemake@wildcards$exclude_samples,"-")[[1]]
@@ -69,13 +70,12 @@ if(asc_ == "Captured"){
 
 samples <- samples_data$sample_name
 
-dir_path_EMH <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",map_,"/"),pattern = "rle0.25.xz.anno_all_types$",full.names = T)
-
+dir_path_EMH <- input_file_folder
 
 chrom_ <- c("1" ,"2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22"  )
 states = c("NEA")
 
-EMH_rle_all <- get_rle_files(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = states,chrom_ = chrom_,sep_char = ",") %>%
+EMH_rle_all <- read.csv(input_file_folder) %>% filter(genetic_map == !!map, target == !!states, type == "state", chrom %in% !!chrom_) %>%
   drop_na() %>% filter(map_len >= 0.05) %>% inner_join(.,Joint_Meta[,c("sample_name","ML_BP_Mean","ML_BP_Higher","ML_BP_Lower")],by=c("sample"="sample_name"))
 
 

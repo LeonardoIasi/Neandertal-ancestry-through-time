@@ -10,11 +10,12 @@ library(reshape)
 
 # functions
 
-source("~/EMH_Introgression_Project/Introgression_Detection/scripts/Analysis_R_functions.R")
+source("Neandertal-ancestry-through-time/Analysis/Analysis_R_functions.R")
 
 ### input Snakemake
 
 Meta = snakemake@input$meta_data
+input_file_folder = snakemake@input$input_folder
 
 sample_set = strsplit(snakemake@wildcards$sample_set,"-")[[1]]
 map_ = snakemake@wildcards$Map
@@ -44,10 +45,6 @@ min_age_BP = 20000
 
 
 samples = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean >= min_age_BP]
-
-
-input_file_folder = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/",map_,"_moorjani_et_al/")
-
 
 
 samples_data = Joint_Meta %>% filter(ML_BP_Mean >= min_age_BP) %>% 
