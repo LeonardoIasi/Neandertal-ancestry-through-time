@@ -1,0 +1,34 @@
+set:
+    SP_Sim:
+        min_l_ACov : [0.0001]
+        min_l_Seg : [0.2]
+        tm : [1600]
+        tm1 : [1600]
+        tm2 : [1600]
+        td : [1]
+        noise : [0,0.002,0.004]
+        truncation : [0.015]
+        n_rep : 50
+    TP_Sim:
+        min_l_ACov : [0.0001]
+        min_l_Seg : [0.2]
+        tm : [1600]
+        tm1 : [1750]
+        tm2 : [1550]
+        td : [1]
+        noise : [0,0.002,0.004]
+        truncation : [0.015]
+        n_rep : 50
+    EP_Sim:
+        min_l_ACov : [0.0001]
+        min_l_Seg : [0.2]
+        tm : None
+        tm1 : None
+        tm2 : None
+        td : None
+        tm_td_comb : [[1600,1],[1600,200],[1600,400],[1700,400],[1800,600],[1900,800],[2000,1000]]
+        noise : [0,0.002,0.004]
+        truncation : [0.015]
+        n_rep : 50
+
+
