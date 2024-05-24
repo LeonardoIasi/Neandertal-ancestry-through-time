@@ -69,7 +69,7 @@ cluster_used = "population_cluster"
 
 cluster_color = cluster_color_broad
 
-genetic_map = "Shared_Map"
+genetic_map = "Shared_map"
 
 min_len_present = 0.05
 min_bp_len_present = 0
@@ -93,7 +93,8 @@ First we construct a PCS from the overlaps of NEandertal segments between indivi
 EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
 Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0]
 
-rle_file = read.csv("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/Data_Upload/ALL_called_ancestry_segments.csv")
+rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv")) %>%
+  filter(genetic_map == !!genetic_map)
 
 rle_EMH = rle_file %>% filter(sample %in% EMH_sample_list)
 
@@ -227,7 +228,8 @@ Next we look at Neandertal ancestry that is either shared or unique to a populat
 EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
 Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0]
 
-rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv"))
+rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv")) %>%
+  filter(genetic_map == !!genetic_map)
 
 rle_EMH = rle_file %>% filter(sample %in% EMH_sample_list) %>% 
   filter(type == called_type,target == states,chrom %in% chrom_,map_len >= min_len_ancient, pos_len >= min_bp_len_ancient)
