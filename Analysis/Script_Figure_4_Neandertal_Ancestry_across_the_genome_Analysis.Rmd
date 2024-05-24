@@ -15,7 +15,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Functions
 
 ```{r eval=T,echo=F,results='hide'}
-source("~/EMH_Introgression_Project/Introgression_Detection/scripts/Analysis_R_functions.R")
+source("Analysis_R_functions.R")
 ```
 
 
@@ -24,7 +24,7 @@ source("~/EMH_Introgression_Project/Introgression_Detection/scripts/Analysis_R_f
 ```{r eval=T,echo=F,results='hide'}
 chrom_ <- c("1" ,"2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" )
 
-cluster_used = "clusterF3D_broad"
+cluster_used = "population_cluster"
 
 
 genetic_map = "Shared_Map"
@@ -42,19 +42,28 @@ called_type = as.vector(c("state"))
 
 ## Meta Data
 
+Put in you file path and the path to the folder downloaded from the Dryad repo. The published 
+
 ```{r eval=T,echo=F,results='hide'}
 THEME <-  theme_bw() + theme(axis.title=element_text(face="bold"))
 
-# folder
-folder_path = "~/EMH_Introgression_Project/Introgression_Detection/Preliminary_Paper_Figures/Shared_Map/"
 
-folder_path_data = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/Preliminary_Paper_Figures_Data/"
+############## change path  ##################
+folder_path = "Paper_figures"
 
-folder_path_Sup_Tables = "~/EMH_Introgression_Project/Introgression_Detection/Supplements_Tables/"
+folder_path_data = "Paper_figures_Data/"
 
+folder_path_Sup_Tables = "Supplements_Tables/"
 
-Joint_Meta <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clusters_using_1240k.csv") %>% 
-  filter(sample_name != "Mota",SuperclusterF3D != "Africa") %>% mutate(sample_name=gsub( "-", ".", sample_name))
+path_to_dryad_downloaded_files = "Dryad_folder"
+
+path_to_my_admixfrog_folder_ancient = "Admixfrog_res_ancient"
+
+path_to_my_admixfrog_folder_present = "Admixfrog_res_present"
+##############################################
+
+Joint_Meta <- read.csv(paste0(path_to_dryad_downloaded_files,"Meta_Data_individuals.csv")) %>% 
+  filter(sample_name != "Mota",superpopulation_cluster != "Africa") %>% mutate(sample_name=gsub( "-", ".", sample_name))
 
 cluster_color_broad_all = data.frame(clusterF3D_broad_all = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","North_Africa","postLGM-WEurHG","preLGM-WEurHG","SA","Oceania","Satsurblia","Siberia&Americas" ,"Sub-Sahara-Africa","SWA","WEur","Yamnaya"),
                                      cluster_color = 
@@ -72,14 +81,21 @@ Supercluster_color = data.frame(SuperclusterF3D = c("Americas&Asia","EarlyOoA","
 
 cluster_color = cluster_color_broad
 
+### Other date that needs to be downloadd
+
+# the bed file of deserts identified in Vernot et al 2016 and Sankararaman et al 2016
 Vernot_sankararaman <- read.csv(paste0(folder_path_data,"Vernot_sankararaman_deserts.csv")) %>% dplyr::rename(annotation = paper)
-Skov_deserts <- read.csv(paste0(folder_path_data,"Laurits_deserts.txt"),sep = "\t") %>% 
-  dplyr::select(chrom,start,end) %>% mutate(annotation = "Skov_2020")
 
 Published_deserts <- rbind(Vernot_sankararaman,Skov_deserts) %>% mutate(chrom = ifelse(chrom == 23,"X",chrom)) %>% 
   mutate_at(c('chrom'), as.character) %>% transform(.,chrom=factor(chrom, levels=chrom_))
 
 write.csv(Published_deserts,paste0(folder_path_data,"Published_Deserts.csv"),quote = F,row.names = F)
+
+# B stats from McVicker et al 2009
+path_to_B_stats_bed = "my_path"
+
+# genetic map for local recombination rates (here Shared map from Hinch et al. 2010)
+path_to_map = "my_path"
 ```
 
 ## Reading in Data
@@ -87,30 +103,31 @@ write.csv(Published_deserts,paste0(folder_path_data,"Published_Deserts.csv"),quo
 ```{r eval=T,echo=F,results='hide'}
 
 
-dir_path_EMH <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = "archaicadmixtureAPX.rle0.25.xz.anno_all_types$",full.names = T)
+EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
+Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0]
 
+rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv")) %>%
+  filter(genetic_map == !!genetic_map)
 
-dir_path_SGDP <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map//rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = "archaicadmixtureAPX.rle0.25.xz.anno_all_types$",full.names = T)
+rle_EMH = rle_file %>% filter(sample %in% EMH_sample_list) %>% 
+  filter(type == called_type,target == states,chrom %in% chrom_,map_len >= min_len_ancient, pos_len >= min_bp_len_ancient)
 
-
-states = c("NEA","DEN")
-EMH_rle_all_unfiltered <- get_rle_files(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = states,chrom_ = chrom_,sep_char = ",") %>%
-  drop_na() 
-
-EMH_rle_all <- EMH_rle_all_unfiltered %>% filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient, n_all_snps >= min_SNP)
-
-
-SGDP_rle_all <- get_rle_files(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("state"),target_ = states,chrom_ = chrom_,sep_char = ",") %>% 
-  filter(map_len >= min_len_present, pos_len >= min_bp_len_present, n_all_snps >= min_SNP) %>%
+rle_PD = rle_file %>% filter(sample %in% Present_Day_sample_list) %>% 
+  filter(type == called_type,target == states,chrom %in% chrom_,map_len >= min_len_present, pos_len >= min_bp_len_present) %>%
   mutate(sample = gsub("-", "\\.", sample))
 
-All_rle <- rbind(SGDP_rle_all,EMH_rle_all) 
 
 
-callable_genome <- read.table("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_callable_regions_joint_windows20000.bed",col.names = c("chrom","start","end"))  %>% mutate(len = end - start) %>% group_by(chrom) %>% dplyr::summarise(callable = sum(len)/1e6) %>% mutate(chrom = ifelse(chrom == "X",23,chrom)) %>% 
-  mutate_at(c('chrom'), as.numeric) 
+All_rle <- rbind(rle_EMH,rle_PD) 
 
-non_callable_regions <- read.table(paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed"),header = F,col.names = c("chrom","start","end"))
+
+non_callable_regions <- read.table(paste0(path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv"),header = F,col.names = c("chrom","start","end"))
+
+## create archaic admixture APX bed
+
+admixfrog_ref <- read.csv(paste0(path_to_dryad_downloaded_files,"/ref_archaicadmixtureAPX_hs37mMask35to99.csv.xz"))
+
+write.table(x = data.frame(chrom = admixfrog_ref$chrom, pos_start = admixfrog_ref$pos -1 ,pos_end = admixfrog_ref$pos,ref = admixfrog_ref$ref, alt = admixfrog_ref$alt),file = paste0(folder_path_data,"/bed/archaicadmixtureAPX.bed"),quote = F,row.names = F,col.names = F,sep = "\t")
 
 ```
 
@@ -131,7 +148,7 @@ NEA_Overlap_data = All_rle %>% filter(target == "NEA") %>% inner_join(.,Joint_Me
 write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$group_id),
                                    file =paste0(folder_path_data,"Total_NEA_ancestry_unmasked.bed"),quote = F,row.names = F,col.names = F,sep = '\t')
 
-system(paste0("bedtools subtract -a ",folder_path_data,"Total_NEA_ancestry_unmasked.bed -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed  > ",folder_path_data,"Total_NEA_Ancestry_masked.bed
+system(paste0("bedtools subtract -a ",folder_path_data,"Total_NEA_ancestry_unmasked.bed -b " ,path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv  > ",folder_path_data,"Total_NEA_Ancestry_masked.bed
 "))
 
 NEA_Overlap_data_masked <- read.table(paste0(folder_path_data,"Total_NEA_Ancestry_masked.bed"),col.names = c("chrom","start","end","group_id")) 
@@ -140,18 +157,29 @@ NEA_Overlap_data_masked <- read.table(paste0(folder_path_data,"Total_NEA_Ancestr
 
 ### Get the frequency of Neandertal Segmnets
 
-For all individuals.
+We also want to see how many individuals have a Neandertal segment at a certain genomic position. Hence we calculate the frequency using bedtools multiintersect for stretches of the genome. Here we do it for all individuals.
 
 ```{r eval=F,echo=F,results='hide'}
 
-EMH_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = c("NEA"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP)
+EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
+Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0]
 
-SGDP_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("state"),target_ = c("NEA"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP)
+rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv")) %>%
+  filter(genetic_map == !!genetic_map)
+
+rle_EMH = rle_file %>% filter(sample %in% EMH_sample_list)
+
+rle_PD = rle_file %>% filter(sample %in% Present_Day_sample_list)
+
+EMH_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_EMH,type_ = called_type,target_ = states,chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP)
+
+SGDP_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_PD,type_ = called_type,target_ = states,chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP)
+
 
 
 system(paste0("bedtools multiinter -i ",paste(c(EMH_file_names_NEA_state,SGDP_file_names_NEA_state), collapse=' ',sep = " ")," >  ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed"))
 
-system(paste0("bedtools subtract -a ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed  -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed >  ",folder_path_data,"All_NEA_state_with_indcount_masked_matrix.bed
+system(paste0("bedtools subtract -a ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed  -b " ,path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv >  ",folder_path_data,"All_NEA_state_with_indcount_masked_matrix.bed
 "))
 
 
@@ -176,7 +204,7 @@ Nea_ancestry_ind_count_matrix <- read.table(paste0(folder_path_data,"All_NEA_sta
 
 write.table(Nea_ancestry_ind_count_matrix,paste0(folder_path_data,"All_NEA_state_with_indcount_masked_matrix.csv"),quote = F,row.names = F)
 
-system(paste0("bedtools intersect -a /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_callable_regions_joint_windows20000.bed -b ",folder_path_data,"All_NEA_state_with_indcount_masked_matrix.bed -wao >  ",folder_path_data,"All_NEA_state_with_indcount_callable_intersect_matrix.bed
+system(paste0("bedtools intersect -a " ,path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv -b ",folder_path_data,"All_NEA_state_with_indcount_masked_matrix.bed -wao >  ",folder_path_data,"All_NEA_state_with_indcount_callable_intersect_matrix.bed
 "))
 
 Nea_Segs_full_callable <- read.table(paste0(folder_path_data,"All_NEA_state_with_indcount_callable_intersect_matrix.bed"))
@@ -193,7 +221,7 @@ write.table(Nea_Segs_full_callable,
                        file =paste0(folder_path_data,"All_NEA_state_with_indcount_callable_intersect_matrix_annotated.bed"),quote = F,row.names = F,col.names = F,sep = '\t')
 ```
 
-For all ancient individuals and a representative sample of present-day individuals. Here 2 individuals from the SGDP per genetic cluster are taken randomly.
+We can also do it for all ancient individuals and a representative individual from present-day per genetic cluster.  Here 2 individuals from the SGDP per genetic cluster are taken randomly.
 
 ```{r eval=T,echo=F,results='hide'}
 Ancient_inds = Joint_Meta %>% filter(ML_BP_Mean > 0) %>% filter(!!sym(cluster_used) != "Sub-Sahara-Africa") %>% .$sample_name
@@ -202,7 +230,6 @@ Present_day_sample_list = c()
 present_day_inds = Joint_Meta %>% filter(ML_BP_Mean == 0) %>% filter(!!sym(cluster_used) != "Sub-Sahara-Africa")
 for(clstr in unique(present_day_inds$clusterF3D)){
   x = sample(present_day_inds$sample_name[present_day_inds[,cluster_used] == clstr],2,replace = F)
-  #x = gsub("\\.","-",x)
   Present_day_sample_list <- c(Present_day_sample_list,x)
 }
 
@@ -217,18 +244,29 @@ write.table(Nea_ancestry_ind_count_matrix_red,
 
 ### Get the frequency of Archaic Segments
 
-For all individuals.
+We can also compute the frequency for all archaic segments Nenadertal and Denisovan for all individuals. This is important for the deserts.
 
 ```{r eval=F,echo=F,results='hide'}
 
-EMH_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = c("NEA","DEN"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP)
+EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
+Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0]
 
-SGDP_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("state"),target_ = c("NEA","DEN"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP)
+rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv")) %>%
+  filter(genetic_map == !!genetic_map)
+
+rle_EMH = rle_file %>% filter(sample %in% EMH_sample_list)
+
+rle_PD = rle_file %>% filter(sample %in% Present_Day_sample_list)
+
+EMH_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_EMH,type_ = called_type,target_ = c("NEA","DEN"),chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP)
+
+SGDP_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_PD,type_ = called_type,target_ = c("NEA","DEN"),chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP)
+
 
 
 system(paste0("bedtools multiinter -i ",paste(c(EMH_file_names_NEA_state,SGDP_file_names_NEA_state), collapse=' ',sep = " ")," >  ",folder_path_data,"All_Archaic_state_with_indcount_unmasked_matrix.bed"))
 
-system(paste0("bedtools subtract -a ",folder_path_data,"All_Archaic_state_with_indcount_unmasked_matrix.bed  -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed >  ",folder_path_data,"All_Archaic_state_with_indcount_masked_matrix.bed
+system(paste0("bedtools subtract -a ",folder_path_data,"All_Archaic_state_with_indcount_unmasked_matrix.bed  -b " ,path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv >  ",folder_path_data,"All_Archaic_state_with_indcount_masked_matrix.bed
 "))
 
 
@@ -253,7 +291,7 @@ Archaic_ancestry_ind_count_matrix <- read.table(paste0(folder_path_data,"All_Arc
 
 write.table(Archaic_ancestry_ind_count_matrix,paste0(folder_path_data,"All_Archaic_state_with_indcount_masked_matrix.csv"),quote = F,row.names = F)
 
-system(paste0("bedtools intersect -a /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_callable_regions_joint_windows20000.bed -b ",folder_path_data,"All_Archaic_state_with_indcount_masked_matrix.bed -wao >  ",folder_path_data,"All_Archaic_state_with_indcount_callable_intersect_matrix.bed
+system(paste0("bedtools intersect -a " ,path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv -b ",folder_path_data,"All_Archaic_state_with_indcount_masked_matrix.bed -wao >  ",folder_path_data,"All_Archaic_state_with_indcount_callable_intersect_matrix.bed
 "))
 
 Archaic_Segs_full_callable <- read.table(paste0(folder_path_data,"All_Archaic_state_with_indcount_callable_intersect_matrix.bed"))
@@ -273,15 +311,17 @@ write.table(Archaic_Segs_full_callable,
 
 ## Neandertal frequency vs B stat
 
+Here we want to see if there a differences in Neandertal frequency dependent on the measure of Background selection in a given region. You can download the Bstats from the McVicker paper. We get the uncertainty by jackknifing the chromosomes. We do the frequency estimates for different B stats bins for different population and age clusters.
+
 ```{r eval=T,echo=F,results='hide'}
 n_inds = Joint_Meta %>% nrow()
 
 sample_names <- read.table(paste0(folder_path_data,"All_Archaic_state_with_indcount_unmasked_matrix_sample_names.txt"))[,1]
 
 
-system(paste0("bedtools intersect -a ",folder_path_data,"All_NEA_state_with_indcount_callable_intersect_matrix_annotated.bed -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/B_Stat/bstat_hg19_with_X_alt.txt -wo > /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/B_Stat/All_NEA_state_with_indcount_callable_intersect_matrix_annotated_Bstat.bed"))
+system(paste0("bedtools intersect -a ",folder_path_data,"All_NEA_state_with_indcount_callable_intersect_matrix_annotated.bed -b ",path_to_B_stats_bed," -wo > ",folder_path_data,"/B_Stat/All_NEA_state_with_indcount_callable_intersect_matrix_annotated_Bstat.bed"))
 
-Nea_ancestry_ind_count_reducedSGDP_Bstat <- read.table("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/B_Stat/All_NEA_state_with_indcount_callable_intersect_matrix_annotated_Bstat.bed",col.names = c("chrom","start","end","n_ind","seg_len",sample_names,"Overlap","chromB","startB","endB","Bstat","OverlapBstat")) %>% mutate(Nea_freq = (n_ind / n_inds))
+Nea_ancestry_ind_count_reducedSGDP_Bstat <- read.table(paste0(folder_path_data,"/B_Stat/All_NEA_state_with_indcount_callable_intersect_matrix_annotated_Bstat.bed"),col.names = c("chrom","start","end","n_ind","seg_len",sample_names,"Overlap","chromB","startB","endB","Bstat","OverlapBstat")) %>% mutate(Nea_freq = (n_ind / n_inds))
 
 Nea_ancestry_ind_count_reducedSGDP_Bstat <- Nea_ancestry_ind_count_reducedSGDP_Bstat %>% mutate(Bstat_bin = cut(Bstat, breaks = c(-1,200, 400, 600, 800, 1000), right = T, labels = F))
 
@@ -357,7 +397,11 @@ Nea_ancestry_ind_count_reducedSGDP_Bstat_stat_by_time_slices_all$JK_max <- apply
 
 ## Neandertal frequency vs Recombination
 
+The next thing we can check is the correlation of Neandertal segments frequency with local recombination rates. We do this for six differnt window sizes and the different age groups. You need to download the map (we used the Shared map).
+
 ```{r eval=T,echo=F,results='hide'}
+
+
 n_inds = Joint_Meta %>% nrow()
 window_sizes = c(20000,50000,100000,200000,500000,1000000)
 
@@ -369,7 +413,7 @@ for(window_size in window_sizes){
   Present_Day_inds = Joint_Meta %>% mutate(sample_name = gsub(x = sample_name,pattern = "-",replacement = ".")) %>%
     filter(ML_BP_Mean == 0)  %>% .$sample_name
   
-  chrom_limits = read_csv("~/EMH_Introgression_Project/Introgression_Detection/ref/chrom_limits.csv") 
+  chrom_limits = read_csv("chrom_limits.csv") 
   
   chrom_ = "1"
   chrom_limits_x = chrom_limits %>% filter(chrom == chrom_)
@@ -386,18 +430,18 @@ for(window_size in window_sizes){
     
   
   
-  write.table(AA_mask,paste("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp.bed",sep=""),quote = F,row.names = F,col.names = F,sep = "\t")
+  write.table(AA_mask,paste0(folder_path_data,"/bed/Genome_in_windows",window_size,"bp.bed",sep=""),quote = F,row.names = F,col.names = F,sep = "\t")
   
-  system(paste0("bedtools intersect -a ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp.bed -b ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/archaicadmixtureAPX.bed -c -f 1E-9 > /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicAdmixtureAPX_sample_dens_windows",window_size,".txt"))
+  system(paste0("bedtools intersect -a ",folder_path_data,"/bed/Genome_in_windows",window_size,"bp.bed -b  ",folder_path_data,"/bed/archaicadmixtureAPX.bed -c -f 1E-9 > ",folder_path_data,"/ArchaicAdmixtureAPX_sample_dens_windows",window_size,".txt"))
   
   
-  coverage_masker = read.table(paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicAdmixtureAPX_sample_dens_windows",window_size,".txt"),col.names = c("chrom","start","end","n_SNP")) %>% 
+  coverage_masker = read.table(paste0(folder_path_data,"/ArchaicAdmixtureAPX_sample_dens_windows",window_size,".txt"),col.names = c("chrom","start","end","n_SNP")) %>% 
     filter(chrom != "X", n_SNP > 0) %>% mutate(chrom = ifelse(chrom == "X",23,chrom))
   
-  write.table(x = coverage_masker[,c("chrom","start","end")],file = paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Autosomes_chromosome_in_windows",window_size,"bp.bed"),
+  write.table(x = coverage_masker[,c("chrom","start","end")],file = paste0(folder_path_data,"/bed/Autosomes_chromosome_in_windows",window_size,"bp.bed"),
               row.names = F,quote = F,col.names = F,sep = "\t")
   
-  system(paste0("bedtools intersect -b ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed -a /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Autosomes_chromosome_in_windows",window_size,"bp.bed -wo > ",folder_path_data,"All_NEA_state_with_indcount_",genetic_map,"_Autosomes_callable_intersect_matrix_annotated_",window_size,"bp_windows.bed"))
+  system(paste0("bedtools intersect -b ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed -a ",folder_path_data,"/bed/Autosomes_chromosome_in_windows",window_size,"bp.bed -wo > ",folder_path_data,"All_NEA_state_with_indcount_",genetic_map,"_Autosomes_callable_intersect_matrix_annotated_",window_size,"bp_windows.bed"))
   
   Nea_ancestry_20kb_Autosomes <- read.table(paste0(folder_path_data,"All_NEA_state_with_indcount_",genetic_map,"_Autosomes_callable_intersect_matrix_annotated_",window_size,"bp_windows.bed"),col.names = c("chrom","start","end","chromB","startB","endB","n_ind","col_ind",All_inds,"Overlap")) 
   
@@ -409,7 +453,7 @@ for(window_size in window_sizes){
     
     positions_to_interpolate = Nea_ancestry_20kb_Autosomes %>% filter(chrom == chr)
     chr = ifelse(chr == 23,"X",chr)
-    map_x <- read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/maps_b37/maps_chr.",chr),header = T) %>%
+    map_x <- read.table(paste0(path_to_map,"/maps_chr.",chr),header = T) %>%
       mutate(pos_len = lead(Physical_Pos) - Physical_Pos, map_len = lead(Shared_Map) - Shared_Map) %>% drop_na() %>% mutate(map_rate = map_len / pos_len)
     
     # Interpolate genetic distances for the current chromosome
@@ -539,16 +583,19 @@ chrom_ <- c("1" ,"2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12
 
 genetic_map = "Shared_Map"
 
+EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
+Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0]
 
-dir_path_EMH <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = "archaicadmixtureAPX.rle0.25.xz.anno_all_types$",full.names = T)
+rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv")) %>%
+  filter(genetic_map == !!genetic_map)
 
+rle_EMH = rle_file %>% filter(sample %in% EMH_sample_list)
 
-dir_path_SGDP <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map//rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = "archaicadmixtureAPX.rle0.25.xz.anno_all_types$",full.names = T)
+rle_PD = rle_file %>% filter(sample %in% Present_Day_sample_list)
 
+EMH_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_EMH,type_ = called_type,target_ = c("NEA","DEN"),chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = 0.01,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP)
 
-EMH_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = c("NEA"),chrom_ = c("1" ,"2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" ),path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/Autosomes"),min_len = 0.01,min_bp_len = 0,min_SNP = 0)
-
-SGDP_file_names_NEA_state = write_bed_from_rle(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("state"),target_ = c("NEA"),chrom_ = c("1" ,"2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" ),path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/Autosomes"),min_len = 0.01,min_bp_len = 0,min_SNP = 0)
+SGDP_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_PD,type_ = called_type,target_ = c("NEA","DEN"),chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = 0.01,min_bp_len = min_bp_len_present,min_SNP = min_SNP)
 
 
 system(paste0("bedtools multiinter -i ",paste(c(EMH_file_names_NEA_state,SGDP_file_names_NEA_state), collapse=' ',sep = " ")," >  ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix_",genetic_map,"_Autosomes_min_len_all_0.01.bed"))
@@ -565,7 +612,7 @@ for(window_size in window_sizes){
   Present_Day_inds = Joint_Meta %>% mutate(sample_name = gsub(x = sample_name,pattern = "-",replacement = ".")) %>%
     filter(ML_BP_Mean == 0)  %>% .$sample_name
   
-  chrom_limits = read_csv("~/EMH_Introgression_Project/Introgression_Detection/ref/chrom_limits.csv") 
+  chrom_limits = read_csv("chrom_limits.csv") 
   
   chrom_ = "1"
   chrom_limits_x = chrom_limits %>% filter(chrom == chrom_)
@@ -582,18 +629,17 @@ for(window_size in window_sizes){
   
   
   
-  write.table(AA_mask,paste("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp.bed",sep=""),quote = F,row.names = F,col.names = F,sep = "\t")
+  write.table(AA_mask,paste0(folder_path_data,"/bed/Genome_in_windows",window_size,"bp.bed",sep=""),quote = F,row.names = F,col.names = F,sep = "\t")
   
-  system(paste0("bedtools intersect -a ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp.bed -b ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/archaicadmixtureAPX.bed -c -f 1E-9 > /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicAdmixtureAPX_sample_dens_windows",window_size,".txt"))
+  system(paste0("bedtools intersect -a ",folder_path_data,"/bed/Genome_in_windows",window_size,"bp.bed -b  ",folder_path_data,"/bed/archaicadmixtureAPX.bed -c -f 1E-9 > ",folder_path_data,"/ArchaicAdmixtureAPX_sample_dens_windows",window_size,".txt"))
   
-  
-  coverage_masker = read.table(paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicAdmixtureAPX_sample_dens_windows",window_size,".txt"),col.names = c("chrom","start","end","n_SNP")) %>% 
+  coverage_masker = read.table(paste0(folder_path_data,"/ArchaicAdmixtureAPX_sample_dens_windows",window_size,".txt"),col.names = c("chrom","start","end","n_SNP")) %>% 
     filter(chrom != "X", n_SNP > 0) %>% mutate(chrom = ifelse(chrom == "X",23,chrom))
   
-  write.table(x = coverage_masker[,c("chrom","start","end")],file = paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Autosomes_chromosome_in_windows",window_size,"bp.bed"),
+  write.table(x = coverage_masker[,c("chrom","start","end")],file = paste0(folder_path_data,"/bed/Autosomes_chromosome_in_windows",window_size,"bp.bed"),
               row.names = F,quote = F,col.names = F,sep = "\t")
   
-  system(paste0("bedtools intersect -b ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix_",genetic_map,"_Autosomes_min_len_all_0.01.bed -a /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Autosomes_chromosome_in_windows",window_size,"bp.bed -wo > ",folder_path_data,"All_NEA_state_with_indcount_",genetic_map,"_Autosomes_callable_intersect_matrix_annotated_",window_size,"_Autosomes_min_len_all_0.01.bed"))
+  system(paste0("bedtools intersect -b ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix_",genetic_map,"_Autosomes_min_len_all_0.01.bed -a ",folder_path_data,"/bed/Autosomes_chromosome_in_windows",window_size,"bp.bed -wo > ",folder_path_data,"All_NEA_state_with_indcount_",genetic_map,"_Autosomes_callable_intersect_matrix_annotated_",window_size,"_Autosomes_min_len_all_0.01.bed"))
   
   Nea_ancestry_20kb_Autosomes <- read.table(paste0(folder_path_data,"All_NEA_state_with_indcount_",genetic_map,"_Autosomes_callable_intersect_matrix_annotated_",window_size,"_Autosomes_min_len_all_0.01.bed"),col.names = c("chrom","start","end","chromB","startB","endB","n_ind","col_ind",All_inds,"Overlap")) 
   
@@ -605,7 +651,7 @@ for(window_size in window_sizes){
     
     positions_to_interpolate = Nea_ancestry_20kb_Autosomes %>% filter(chrom == chr)
     chr = ifelse(chr == 23,"X",chr)
-    map_x <- read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/maps_b37/maps_chr.",chr),header = T) %>%
+    map_x <- read.table(paste0(path_to_map,"/maps_b37/maps_chr.",chr),header = T) %>%
       mutate(pos_len = lead(Physical_Pos) - Physical_Pos, map_len = lead(Shared_Map) - Shared_Map) %>% drop_na() %>% mutate(map_rate = map_len / pos_len)
     
     # Interpolate genetic distances for the current chromosome
@@ -730,22 +776,32 @@ res_rec_rate_vs_Nea_freq_cor <- do.call("rbind",res_x)
 
 ## Deserts
 
-The deserts are computed using segments called as homozygous Africans with the same minimum length cutoffs as used for calling Neandertal segments. Since the way admixfrog calles segments it cal call multiple ancestries for the same genomic location since adjacent segments can be bridged by the penalty and scoring funtion. To make sure not to have African segments that include some short archaic segments, all archaic  segments with a minimum length of 0.001 cM (which is the length of two adjacent bins) will be subtracted.
+The deserts are computed using segments called as homozygous Africans with the same minimum length cutoffs as used for calling Neandertal segments. Since the way admixfrog calles segments it cal call multiple ancestries for the same genomic location since adjacent segments can be bridged by the penalty and scoring function. To make sure not to have African segments that include some short archaic segments, all archaic  segments with a minimum length of 0.001 cM (which is the length of two adjacent bins) will be subtracted.
 
 ```{r eval=T,echo=F,results='hide'}
- 
-EMH_file_names_AFR_homo = write_bed_from_rle(directory_path = dir_path_EMH,split_char = "_",type_ = c("homo"),target_ = c("AFR"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP)
 
+EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
+Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0]
 
-SGDP_file_names_AFR_homo = write_bed_from_rle(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("homo"),target_ = c("AFR"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP)
+rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv")) %>%
+  filter(genetic_map == !!genetic_map)
 
-EMH_file_names_Archaic_state_strict = write_bed_from_rle(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = c("DEN","NEA"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = 0.01,min_bp_len = 0,min_SNP = 0,optional_col = "frag_ID")
+rle_EMH = rle_file %>% filter(sample %in% EMH_sample_list)
 
-EMH_file_names_Archaic_state_relaxed = write_bed_from_rle(directory_path = dir_path_EMH,split_char = "_",type_ = c("state"),target_ = c("DEN","NEA"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = 0.05,min_bp_len = 10000,min_SNP = 5,optional_col = "frag_ID")
+rle_PD = rle_file %>% filter(sample %in% Present_Day_sample_list)
 
-SGDP_file_names_Archaic_state_strict = write_bed_from_rle(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("state"),target_ = c("DEN","NEA"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map//rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = 0.01,min_bp_len = 0,min_SNP = 0,optional_col = "frag_ID")
+EMH_file_names_AFR_homo = write_bed_from_All_rle(rle_file = rle_EMH,type_ = c("homo"),target_ = c("AFR"),chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP)
 
-SGDP_file_names_Archaic_state_relaxed = write_bed_from_rle(directory_path = dir_path_SGDP,split_char = "_archaic",type_ = c("state"),target_ = c("DEN","NEA"),chrom_ = chrom_,path = paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map//rle/gtmode/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),min_len = 0.05,min_bp_len = 10000,min_SNP = 5,optional_col = "frag_ID")
+SGDP_file_names_AFR_homo = write_bed_from_All_rle(rle_file = rle_PD,type_ = c("homo"),target_ = c("AFR"),chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP)
+
+EMH_file_names_Archaic_state_strict = write_bed_from_All_rle(rle_file = rle_EMH,type_ = c("state"),target_ = c("DEN","NEA"),chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = 0.01,min_bp_len = 0,min_SNP = 0,optional_col = "frag_ID")
+
+SGDP_file_names_Archaic_state_strict = write_bed_from_All_rle(rle_file = rle_PD,type_ = c("state"),target_ = c("DEN","NEA"),chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = 0.01,min_bp_len = 0,min_SNP = 0,optional_col = "frag_ID")
+
+EMH_file_names_Archaic_state_relaxed = write_bed_from_All_rle(rle_file = rle_EMH,type_ = c("state"),target_ = c("DEN","NEA"),chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = 0.05,min_bp_len = 10000,min_SNP = 5,optional_col = "frag_ID")
+
+SGDP_file_names_Archaic_state_relaxed = write_bed_from_All_rle(rle_file = rle_PD,type_ = c("state"),target_ = c("DEN","NEA"),chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = 0.05,min_bp_len = 10000,min_SNP = 5,optional_col = "frag_ID")
+
 
 ### computing it on an indidivual level
 Human_only = c(EMH_file_names_AFR_homo,SGDP_file_names_AFR_homo)
@@ -755,14 +811,14 @@ Any_archaic = c(EMH_file_names_Archaic_state_strict,SGDP_file_names_Archaic_stat
 
 for(ind in 1:length(Human_only)){
   print(paste0("Human only processing individual ",ind," out of ",length(Human_only)))
-  system(paste0("bedtools subtract -a ",Human_only[ind]," -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed   > ", 
+  system(paste0("bedtools subtract -a ",Human_only[ind]," -b ",path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv   > ", 
                 substring(Human_only[ind], 1, nchar(Human_only[ind])-4),"_masked.bed"
   ))
 }
 
 for(ind in 1:length(Any_archaic)){
   print(paste0("Any Archaic processing individual ",ind," out of ",length(Any_archaic)))
-  system(paste0("bedtools subtract -a ",Any_archaic[ind]," -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed   > ", 
+  system(paste0("bedtools subtract -a ",Any_archaic[ind]," -b ",path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv   > ", 
                 substring(Any_archaic[ind], 1, nchar(Any_archaic[ind])-4),"_masked.bed"
   ))
 }
@@ -789,41 +845,42 @@ system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_Archaic_state_rela
 system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_Archaic_state_relaxed,SGDP_file_names_Archaic_state_relaxed), collapse=' ',sep = " ")," | awk '{print $1, $2, $3, $4}' | sed 's/ /\t/g'> ",folder_path_data,"All_Archaic_state_unmasked_cleaned_relaxed.bed",sep=""))
 
 system(paste0("bedtools subtract -a ",folder_path_data,"All_Archaic_state_unmasked_cleaned_relaxed.bed  > 
-              /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed  >",folder_path_data,"All_Archaic_state_masked_cleaned_relaxed.bed"))
+              ",path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv >",folder_path_data,"All_Archaic_state_masked_cleaned_relaxed.bed"))
 
 system(paste0("bedtools subtract -a ",folder_path_data,"All_homo_AFR_unmasked_cleaned.bed -b ",folder_path_data,"All_Archaic_state_unmasked_cleaned_relaxed.bed  > ",folder_path_data,"Total_deserts_unmasked_relaxed.bed
 "))
 
-system(paste0("bedtools subtract -a ",folder_path_data,"Total_deserts_unmasked_relaxed.bed -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed > ",folder_path_data,"Total_deserts_masked_relaxed.bed"))
+system(paste0("bedtools subtract -a ",folder_path_data,"Total_deserts_unmasked_relaxed.bed -b ",path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv > ",folder_path_data,"Total_deserts_masked_relaxed.bed"))
 
 system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_Archaic_state_strict,SGDP_file_names_Archaic_state_strict), collapse=' ',sep = " "),"  | sed 's/ /\t/g'> ",folder_path_data,"All_Archaic_state_unmasked_strict.bed",sep=""))
 
 system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_Archaic_state_strict,SGDP_file_names_Archaic_state_strict), collapse=' ',sep = " ")," | awk '{print $1, $2, $3, $4}' | sed 's/ /\t/g'> ",folder_path_data,"All_Archaic_state_unmasked_cleaned_strict.bed",sep=""))
 
 system(paste0("bedtools subtract -a ",folder_path_data,"All_Archaic_state_unmasked_cleaned_strict.bed  > 
-              /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed  >",folder_path_data,"All_Archaic_state_masked_cleaned_strict.bed"))
+              ",path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv  >",folder_path_data,"All_Archaic_state_masked_cleaned_strict.bed"))
 
 system(paste0("bedtools subtract -a ",folder_path_data,"All_homo_AFR_unmasked_cleaned.bed -b ",folder_path_data,"All_Archaic_state_unmasked_cleaned_strict.bed  > ",folder_path_data,"Total_deserts_unmasked_strict.bed"))
 
-system(paste0("bedtools subtract -a ",folder_path_data,"Total_deserts_unmasked_strict.bed -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows20000.bed  > ",folder_path_data,"Total_deserts_masked_strict.bed"))
+system(paste0("bedtools subtract -a ",folder_path_data,"Total_deserts_unmasked_strict.bed -b ",path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv  > ",folder_path_data,"Total_deserts_masked_strict.bed"))
 ```
 
 ### Analysis of known deserts
 
+We looked at the deserts identified in Snakararaman et al 2016 and Vernot et al 2016 and if we find any Archauc ancestry in them.
 
 ```{r eval=F,echo=F,results='hide'}
 #Read in Data
-dir_path_EMH_human_only <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = "_individual_deserts_masked.bed$",full.names = T)
+dir_path_EMH_human_only <- list.files(path=paste0("Bed_files/",genetic_map,"/"),pattern = "_individual_deserts_masked.bed$",full.names = T)
 
-dir_path_SGDP_human_only <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map//rle/gtmode/length_bin_15/5000//AFR-NEA-DEN/",genetic_map,"/"),pattern = "_individual_deserts_masked.bed$",full.names = T)
+dir_path_SGDP_human_only <- list.files(path=paste0("Bed_files/",genetic_map,"/"),pattern = "_individual_deserts_masked.bed$",full.names = T)
 
-dir_path_EMH_any_archaic <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/"),pattern = "DEN_NEA_statemin_len_0.001_minSNP_0_masked.bed$",full.names = T)
+dir_path_EMH_any_archaic <- list.files(path=paste0("Bed_files/",genetic_map,"/"),pattern = "DEN_NEA_statemin_len_0.001_minSNP_0_masked.bed$",full.names = T)
 
-dir_path_SGDP_any_archaic <- list.files(path=paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_SGDP_admixfrog0.7_Shared_Map/rle/gtmode/length_bin_15/5000//AFR-NEA-DEN/",genetic_map,"/"),pattern = "DEN_NEA_statemin_len_0.001_minSNP_0_masked.bed$",full.names = T)
+dir_path_SGDP_any_archaic <- list.files(path=paste0("Bed_files/",genetic_map,"/"),pattern = "DEN_NEA_statemin_len_0.001_minSNP_0_masked.bed$",full.names = T)
 
 
 
-Published_deserts_overlap <- Published_deserts %>% filter(annotation != "Skov_2020") %>% dplyr::rename(pos = start, pos_end = end) %>% 
+Published_deserts_overlap <- Published_deserts %>% dplyr::rename(pos = start, pos_end = end) %>% 
   group_overlaps_fn(.) %>% pivot_wider(names_from = annotation,
     values_from = c(pos, pos_end)) %>% 
   mutate(intersect_start = ifelse(pos_Vernot_2016 >= pos_Sankararaman_2016,pos_Vernot_2016,pos_Sankararaman_2016),
@@ -861,6 +918,7 @@ write.csv(x = archaic_ancestry_in_deserts,file = paste0(folder_path_data,"archai
 
 #### Check each segmnets in desert
 
+There is some ancestry detected but usually in very short segments. We look at every segment longer than 0.1 cM in detail by ploting its alternatve allele read frequency with the alternative allele frequency of the archaic references.
 
 ```{r eval=T,echo=F,results='hide'}
   
@@ -871,9 +929,138 @@ min_introgressed_cM_len = 0.1
 text_size = 4
 facet_size = 4
 
-setwd("~/EMH_Introgression_Project/Introgression_Detection/scripts/plotting/")
-source("long_frag_generic.R")
-ref = read_csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_archaicadmixtureAPX_hs37mMask35to99.csv.xz", col_types=cols(chrom=col_character()))
+plot_snp_run <- function(snp, ref, run, ext=c(4e5, 5e4),
+                     filter_ambiguous=T,
+                     filter_multi=F,
+                     filter_fixed_strict=F,
+                     plot_coverage=T,
+                     large_top=1,
+                     ignore_bins=F,
+                     plot_est=T,
+                     min_cov = 1,
+                     min_freq = 0,
+                     one_snp_per_bin = F,
+                     col_path,
+                     pops = c("AFR", "VIN", "DEN"),
+                     dont_plot_pop=c(),
+                     base_pop= 'DEN', #for fixed,
+                     p_read_name = 'p_read',
+                     col_pallet = NULL
+                     ){ 
+    run_snp = snp %>% 
+            filter(chrom==min(run$chrom), pos>=min(run$pos) - ext[1], 
+                   pos < max(run$pos_end) + ext[2]) %>%
+            left_join(ref %>% dplyr::select(-map)) 
+    
+    a1 = c(sprintf("%s_alt", pops), "talt")
+    a2 = c(sprintf("%s_ref", pops), "tref")
+    freqs = lapply(1: (length(pops) + 1), 
+                   function(i) run_snp[a1[i]] / (run_snp[a1[i]] + run_snp[a2[i]])) %>% 
+        bind_cols %>% 
+        as.data.frame
+    names(freqs) = c(pops, 'p_read')
+    freqs = freqs %>% 
+        bind_cols(run_snp %>% dplyr::select(p)) %>%
+        mutate_all(function(x)ifelse(.[,base_pop] > 0.5, 1-x, x)) %>%
+        mutate_all(function(x)ifelse(.[,base_pop] == .5 & rowSums(.[,1:(ncol(.)-2)], na.rm=T) > 0.5, 1-x, x))
+    lsr0 = bind_cols(run_snp %>% dplyr::select(-p), freqs)
+
+    lsr0 = lsr0 %>% filter(p_read >= min_freq)
+    
+
+    #TRIALS
+    is_fixed = sapply(pops, function(p)p=abs(lsr0[base_pop] - lsr0[p]) == 1,
+                      simplify=F, USE.NAMES=T)
+    lsr0$fixed = 'none'
+    for(p in pops) lsr0$fixed[is_fixed[[p]]] = sprintf('fixed in %s' ,p)
+    lsr0$fixed[is_fixed %>% bind_rows %>% rowSums(na.rm=T) > 1] = 'multiple'
+
+    lsr0$strict_fixed = rowSums(lsr0[,pops] == 0) == length(pops) - 1 & rowSums(lsr0[,pops] == 1) == 1
+
+    
+    x= lsr0 %>% 
+        mutate(depth=tref+talt) %>% 
+        filter(depth >= min_cov) %>%
+        dplyr::select(snp_id, bin, fixed, strict_fixed, depth, pos, p_est=p, all_of(pops), p_read) %>% 
+        gather('k', 'v', c('p_read', pops), factor_key=T) 
+
+    x$target=apply(run[,c('pos', 'pos_end')], 1, 
+                   function(row)row[1] < x$pos & x$pos < row[2])  %>% apply(1, any)
+    x = x %>% mutate(pos=scales::comma(pos)) %>%
+        filter(!is.na(p_est))
+
+    if(filter_ambiguous){
+        x = x %>% filter(!fixed %in% c('none'))
+    }
+
+    if(filter_multi){
+        x = x %>% filter(!fixed %in% c('multiple'))
+    }
+
+    if(filter_fixed_strict){
+        x = x %>% filter(strict_fixed)
+    }
+
+    if(one_snp_per_bin){
+        x = x %>% group_by(bin) %>%
+            filter(snp_id == min(snp_id))
+    }
+
+    if(large_top){
+        x = x %>% mutate(
+                         p_est = p_est * large_top,
+                         v = ifelse(k=='p_read', v*large_top, v)
+                         )
+    }
+
+
+    if(!is.null(col_pallet)){
+        cols = col_pallet
+    } else{
+        cols = yaml::read_yaml(col_path)$colors %>% unlist
+        names(cols) = sprintf("fixed in %s", names(cols))
+        cols = c(cols, 'none'='darkgrey', 'multiple'='darkgrey')
+        
+    }
+
+    levels(x$k)[levels(x$k)=='p_read'] = p_read_name
+
+    P = x %>% 
+        filter(! k %in% dont_plot_pop) %>%
+        ggplot() + 
+        geom_hline(yintercept=0, color="lightgrey") + 
+        geom_hline(yintercept=1, color='white') + 
+        geom_col(aes(x=pos, y=v, fill=fixed))  + 
+        theme_classic() + 
+        theme(axis.text.x=element_text(angle=90, vjust=.5, size=6), 
+              legend.position='none', panel.spacing.x=unit(0.05, 'lines'),
+              strip.text.x=element_blank()) +
+        scale_x_discrete("SNP position") +
+        scale_y_continuous("frequency", labels = scales::rescale_max, 
+                           breaks=function(x){c(mean(x), x[2])}, 
+                                                     expand=c(0,0)) +
+        scale_fill_manual(values=cols)
+
+
+    if(ignore_bins){
+        P = P +facet_grid(k~., space='free', scales='free', switch='x')
+    } else {
+        P = P + facet_grid(k~bin, space='free', scales='free', switch='x')
+    } 
+    if(plot_coverage){
+        P = P + geom_text(aes(x=pos, y=large_top, label=depth), 
+                          vjust=1, size=3, color='black', data=x %>% filter(k==p_read_name))
+    } else {
+        P = P + geom_hline(aes(yintercept=large_top), alpha=0, data = x %>% filter(k==p_read_name))
+    }
+
+    if(plot_est){
+        P = P + geom_area(aes(x=pos, y=p_est, alpha=target), lwd=.3, lty=1, color='black', data=x %>% filter(k==p_read_name))
+    }
+    return(P)
+}
+
+ref = read_csv(paste0(path_to_dryad_downloaded_files,"/ref_archaicadmixtureAPX_hs37mMask35to99.csv.xz"), col_types=cols(chrom=col_character()))
   
 
 P_desert_in_detail_chrom1 = list()
@@ -883,7 +1070,7 @@ run1 = archaic_ancestry_in_deserts%>% filter(desertID == "1:9.9e+07-114900000") 
 for(i in 1:length(run1$chrom)){
   segx = i
   
-  snp = read_csv(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
+  snp = read_csv(paste0(path_to_dryad_downloaded_files,"SNP_files_Shared_map/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
   
   
   P_desert_in_detail_chrom1[[segx]] <- plot_snp_run(snp, ref, run1[segx,], 
@@ -897,7 +1084,7 @@ for(i in 1:length(run1$chrom)){
                  large_top = 2.5,
                  min_freq = 0.0,
                  one_snp_per_bin=T,
-                 col_path = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/scripts/plotting/colors.yaml",
+                 col_path = "colors.yaml",
                  p_read_name=run1$sample_name[segx],
                  ext=c(0, 0), 
                  pops=c("NEA", "DEN", "AFR"), base_pop='AFR') +
@@ -913,16 +1100,11 @@ P_desert_in_detail_chrom3 = list()
 run1 = archaic_ancestry_in_deserts%>% filter(desertID == "3:76500000-90700000") %>% arrange(-map_len) %>% 
   mutate(pos_len = (pos_end - pos)) %>% filter(map_len >= min_introgressed_cM_len )
 
-#if(length(run1$chrom) == 0){
-#  run1 = archaic_ancestry_in_deserts%>% filter(desertID == "3:76500000-90700000") %>% arrange(-map_len) %>% 
-#  mutate(pos_len = (pos_end - pos))
-#  run1 = run1[1:2,]
-#}
 
 for(i in 1:length(run1$chrom)){
   segx = i
   
-  snp = read_csv(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
+  snp = read_csv(paste0(path_to_dryad_downloaded_files,"SNP_files_Shared_map/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
   
   
   P_desert_in_detail_chrom3[[segx]] <- plot_snp_run(snp, ref, run1[segx,], 
@@ -936,7 +1118,7 @@ for(i in 1:length(run1$chrom)){
                  large_top = 2.5,
                  min_freq = 0.0,
                  one_snp_per_bin=T,
-                 col_path = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/scripts/plotting/colors.yaml",
+                 col_path = "colors.yaml",
                  p_read_name=run1$sample_name[segx],
                  ext=c(0, 0), 
                  pops=c("NEA", "DEN", "AFR"), base_pop='AFR') +
@@ -952,16 +1134,11 @@ P_desert_in_detail_chrom7 = list()
 run1 = archaic_ancestry_in_deserts%>% filter(desertID == "7:106300000-1.28e+08") %>% arrange(-map_len) %>% 
   mutate(pos_len = (pos_end - pos)) %>% filter(map_len >= min_introgressed_cM_len)
 
-#if(length(run1$chrom) == 0){
-#  run1 = archaic_ancestry_in_deserts%>% filter(desertID == "7:106300000-1.28e+08") %>% arrange(-map_len) %>% 
-#  mutate(pos_len = (pos_end - pos))
-#  run1 = run1[1:2,]
-#}
 
 for(i in 1:length(run1$chrom)){
   segx = i
   
-  snp = read_csv(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
+  snp = read_csv(paste0(path_to_dryad_downloaded_files,"SNP_files_Shared_map/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
   
   
   P_desert_in_detail_chrom7[[segx]] <- plot_snp_run(snp, ref, run1[segx,], 
@@ -975,7 +1152,7 @@ for(i in 1:length(run1$chrom)){
                  large_top = 2.5,
                  min_freq = 0.0,
                  one_snp_per_bin=T,
-                 col_path = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/scripts/plotting/colors.yaml",
+                 col_path = "colors.yaml",
                  p_read_name=run1$sample_name[segx],
                  ext=c(0, 0), 
                  pops=c("NEA", "DEN", "AFR"), base_pop='AFR') +
@@ -991,16 +1168,11 @@ P_desert_in_detail_chrom8 = list()
 run1 = archaic_ancestry_in_deserts%>% filter(desertID == "8:53900000-6.6e+07") %>% arrange(-map_len) %>% 
   mutate(pos_len = (pos_end - pos)) %>% filter(map_len >= min_introgressed_cM_len )
 
-#if(length(run1$chrom) == 0){
-#  run1 = archaic_ancestry_in_deserts%>% filter(desertID == "8:53900000-6.6e+07") %>% arrange(-map_len) %>% 
-#  mutate(pos_len = (pos_end - pos))
-#  run1 = run1[1:2,]
-#}
 
 for(i in 1:length(run1$chrom)){
   segx = i
   
-  snp = read_csv(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
+  snp = read_csv(paste0(path_to_dryad_downloaded_files,"SNP_files_Shared_map/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
   
   
   P_desert_in_detail_chrom8[[segx]] <- plot_snp_run(snp, ref, run1[segx,], 
@@ -1014,7 +1186,7 @@ for(i in 1:length(run1$chrom)){
                  large_top = 2.5,
                  min_freq = 0.0,
                  one_snp_per_bin=T,
-                 col_path = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/scripts/plotting/colors.yaml",
+                 col_path = "colors.yaml",
                  p_read_name=run1$sample_name[segx],
                  ext=c(0, 0), 
                  pops=c("NEA", "DEN", "AFR"), base_pop='AFR') +
@@ -1030,16 +1202,12 @@ P_desert_in_detail_chrom13 = list()
 run1 = archaic_ancestry_in_deserts%>% filter(desertID == "13:4.9e+07-6.1e+07") %>% arrange(-map_len) %>% 
   mutate(pos_len = (pos_end - pos)) %>% filter(map_len >= min_introgressed_cM_len)
 
-#if(length(run1$chrom) == 0){
-#  run1 = archaic_ancestry_in_deserts%>% filter(desertID == "13:4.9e+07-6.1e+07") %>% arrange(-map_len) %>% 
-#  mutate(pos_len = (pos_end - pos))
-#  run1 = run1[1:2,]
-#}
+
 
 for(i in 1:length(run1$chrom)){
   segx = i
   
-  snp = read_csv(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/New_REF_AA_with_APX_EMH_admixfrog0.7_Shared_Map//admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/",genetic_map,"/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
+  snp = read_csv(paste0(path_to_dryad_downloaded_files,"SNP_files_Shared_map/",run1$sample_name[segx],"_archaicadmixtureAPX.snp.xz"), col_types=cols(chrom=col_character()))
   
   
   P_desert_in_detail_chrom13[[segx]] <- plot_snp_run(snp, ref, run1[segx,], 
@@ -1053,7 +1221,7 @@ for(i in 1:length(run1$chrom)){
                  large_top = 2.5,
                  min_freq = 0.0,
                  one_snp_per_bin=T,
-                 col_path = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/scripts/plotting/colors.yaml",
+                 col_path = "colors.yaml",
                  p_read_name=run1$sample_name[segx],
                  ext=c(0, 0), 
                  pops=c("NEA", "DEN", "AFR"), base_pop='AFR') +
@@ -1102,17 +1270,16 @@ write.csv(Published_deserts_overlap_intersect_anno,paste0(folder_path_data,"Publ
 
 #### Permutation test 
 
-Get the permutation on all samples
+Next we want to see how depleted the published desert are through time compared to windows the same size as an average desert. Therefore we go through the genome in steps of 1 Mb and get the frequency of archaic ancestry in windows of an average desert.
 
 
 ```{r eval=F,echo=F,results='hide'}
 
-sample_names = c(unlist(lapply(dir_path_EMH,function(x) strsplit(x = tail(unlist(strsplit(x,split = "/")),1),split = "_")[[1]][1])),
-                 unlist(lapply(dir_path_SGDP,function(x) strsplit(x = tail(unlist(strsplit(x,split = "/")),1),split = "_archaic")[[1]][1])))
+sample_names = read.table(paste0(folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix_sample_names.txt"))[,1]
 
 
 
-Published_deserts_overlap <- Published_deserts %>% filter(annotation != "Skov_2020") %>% dplyr::rename(pos = start, pos_end = end) %>% 
+Published_deserts_overlap <- Published_deserts  %>% dplyr::rename(pos = start, pos_end = end) %>% 
   group_overlaps_fn(.) %>% pivot_wider(names_from = annotation,
     values_from = c(pos, pos_end)) %>% 
   mutate(intersect_start = ifelse(pos_Vernot_2016 >= pos_Sankararaman_2016,pos_Vernot_2016,pos_Sankararaman_2016),
@@ -1129,12 +1296,10 @@ write.table(Published_deserts_overlap[,c(1:3)],paste0(folder_path_data,"Publishe
 
 system(paste0("cat ",folder_path_data,"Published_deserts1.bed | sed 's/ //g' > ",folder_path_data,"Published_deserts.bed"))
 
-#system(paste0("bedtools intersect -a ",folder_path_data,"Published_deserts.bed -b ",folder_path_data,"All_Archaic_state_unmasked_cleaned_strict.bed -wao > ",folder_path_data,"Published_Deserts_intersect.bed"))
-
 
 system(paste0("bedtools intersect -a ",folder_path_data,"Published_deserts.bed -b ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed -wao > ",folder_path_data,"Published_Deserts_intersect.bed"))
 
-chrom_limits = read.table("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicAdmixtureAPX_sample_dens_windows20000.txt",col.names = c("chrom","start","end","n_SNP")) %>% filter(n_SNP > 0) %>% group_by(chrom) %>% summarize(pos0_min = min(start),pos_max = max(end)) %>% ungroup()
+chrom_limits = read.table(paste0(folder_path_data,"/ArchaicAdmixtureAPX_sample_dens_windows20000.txt"),col.names = c("chrom","start","end","n_SNP")) %>% filter(n_SNP > 0) %>% group_by(chrom) %>% summarize(pos0_min = min(start),pos_max = max(end)) %>% ungroup()
 sliding_by = 1e6
 window_size = mean(Published_deserts_overlap$len)
 
@@ -1155,11 +1320,9 @@ for(i in 0:round(window_size/sliding_by) ){
 
   AA_mask = AA_mask %>% group_by(chrom) %>% mutate(pos_end = ifelse(is.na(lead(pos)),pos+window_size,lead(pos)))
   
-  write.table(AA_mask,paste("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp_sliding_window",i,".bed",sep=""),quote = F,row.names = F,col.names = F,sep = "\t")
+  write.table(AA_mask,paste(folder_path_data,"/bed/Genome_in_windows",window_size,"bp_sliding_window",i,".bed",sep=""),quote = F,row.names = F,col.names = F,sep = "\t")
   
-  #system(paste0("bedtools intersect -a ","~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp_sliding_window",i,".bed"," -b ",folder_path_data,"All_Archaic_state_unmasked_strict.bed -wao > ",folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,".bed"))
-  
-  system(paste0("bedtools intersect -a ","~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp_sliding_window",i,".bed"," -b ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed -wao > ",folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,".bed"))
+  system(paste0("bedtools intersect -a ",folder_path_data,"/bed/Genome_in_windows",window_size,"bp_sliding_window",i,".bed"," -b ",folder_path_data,"All_NEA_state_with_indcount_unmasked_matrix.bed -wao > ",folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,".bed"))
   
 }
 
@@ -1194,7 +1357,7 @@ Calculate_Archaic_alpha_in_permutated_deserts_fn <- function(sample_list,all_sam
   
   write.table(NEA_ancestry_windows,paste0(folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,"_",Output_prefix,"_cleaned.bed"),quote = F,row.names = F,col.names = F,sep = "\t")
   
-    system(paste0("bedtools subtract -a ",folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,"_",Output_prefix,"_cleaned.bed"," -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_Mask_joint_windows50000.bed   > " ,folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,"_",Output_prefix,"cleaned_masked.bed"))
+    system(paste0("bedtools subtract -a ",folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,"_",Output_prefix,"_cleaned.bed"," -b " ,path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv   > " ,folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,"_",Output_prefix,"cleaned_masked.bed"))
     
   NEA_ancestry_windows_masked <- read.table(paste0(folder_path_data,"Desert_analysis/Published_Deserts_permutation",i,"_",Output_prefix,"cleaned_masked.bed"))%>%
   mutate(sliding_window = i)
@@ -1269,8 +1432,6 @@ Sample_desert_premutated_time_slices$time <- factor(Sample_desert_premutated_tim
 
 write.csv(Sample_desert_premutated_time_slices,file = paste0(folder_path_data,"Sample_desert_premutated_time_slices_usual_min_cutoffs.csv"),quote = F,row.names = F)
 
-#write.csv(Sample_desert_premutated_time_slices,file = paste0(folder_path_data,"Sample_desert_premutated_time_slices_cutoffs_strict_Afr_homo.csv"),quote = F,row.names = F)
-
 
 
 ```
@@ -1278,33 +1439,6 @@ write.csv(Sample_desert_premutated_time_slices,file = paste0(folder_path_data,"S
 ## Genome wide summaries
 
 ```{r eval=T,echo=F,results='hide'}
-
-## Desert summary
-Deserts_masked_relaxed <- read.table(paste0(folder_path_data,"/Total_deserts_masked_relaxed.bed"),col.names = c("chrom","start","end","n_ind")) %>% filter(n_ind >= ifelse(chrom != 23 , length(unique(Joint_Meta$sample_name)),length(which(Joint_Meta$x_chrom_captured == T)))) %>% group_by(chrom) %>% mutate(desert_length = end - start)
-
-Top_10_longest_Deserts_relaxed <- Deserts_masked_relaxed %>%
-    filter(chrom != 23) %>%
-    arrange(desc(desert_length)) %>%
-    head(10)
-
-Total_deserts_masked_relaxed_summary = Deserts_masked_relaxed  %>% group_by(chrom) %>%
-  dplyr::summarise(total_desert_MB = sum(desert_length)/1e6) %>% inner_join(.,callable_genome,by="chrom") %>% mutate(percent_desert = total_desert_MB/callable) %>% 
-  mutate_at(c('chrom'), as.character) %>% mutate(chrom = ifelse(chrom == "23","X",chrom))
-
-write.csv(Total_deserts_masked_relaxed_summary,paste0(folder_path_data,"Total_deserts_masked_relaxed_summary.csv"),quote = F,row.names = F)
-
-Deserts_masked_strict <- read.table(paste0(folder_path_data,"Total_deserts_masked_strict.bed"),col.names = c("chrom","start","end","n_ind")) %>% filter(n_ind >= ifelse(chrom != 23 , length(unique(Joint_Meta$sample_name)),length(which(Joint_Meta$x_chrom_captured == T)))) %>% group_by(chrom) %>% mutate(desert_length = end - start)
-
-Top_10_longest_Deserts_strict <- Deserts_masked_strict %>%
-    filter(chrom != 23) %>%
-    arrange(desc(desert_length)) %>%
-    head(10)
-
-Total_deserts_masked_strict_summary = Deserts_masked_strict  %>% group_by(chrom) %>%
-  dplyr::summarise(total_desert_MB = sum(desert_length)/1e6) %>% inner_join(.,callable_genome,by="chrom") %>% mutate(percent_desert = total_desert_MB/callable) %>% 
-  mutate_at(c('chrom'), as.character) %>% mutate(chrom = ifelse(chrom == "23","X",chrom))
-
-write.csv(Total_deserts_masked_strict_summary,paste0(folder_path_data,"Total_deserts_masked_strict_summary.csv"),quote = F,row.names = F)
 
 ## NEA summary
 
