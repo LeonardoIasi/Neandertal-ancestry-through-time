@@ -1,0 +1,47 @@
+colors: #within NEA
+    AFR: "#dfdfdf"
+    EAS: "#dfdfdf"
+    AFK: "#ffffff"
+    OCE: "#ffbbbb"
+    EUR: "#ffffff"
+    CHA: "#dfdfdf"
+    ALT: "#678cc6"
+    VIN: "#FAA545"
+    NEA: "#CC0000"
+    DEN: "#0000FF"
+    VINCHA : '#813405'
+    CHAVIN : '#813405'
+    AFRNEA : "#FAA545"
+colors_NEA_VS_OTHERS:
+    AFR: "#dfdfdf"
+    EAS: "#dfdfdf"
+    AFK: "#ffffff"
+    OCE: "#ffbbbb"
+    EUR: "#ffffff"
+    UST: "#bbffbb"
+    CHA: "#c16be0"
+    C: "#c16be0"
+    A:   "#678cc6"
+    ALT: "#678cc6"
+    NEA: "#678cc6"
+    'N': "#678cc6"
+    VIN: "#678cc6"
+    V:   "#678cc6"
+    DEN: "#FAA545"
+    YAM: "#FAA545"
+    D:   "#FAA545"
+    D11: "#ffff00"
+    COW: "#ffff00"
+    ZERO: "#111111"
+    h: "#000000"
+    NEADEN : '#336600'
+    DENNEA : '#813405'
+    ND : '#813405'
+    DN : '#813405'
+    AD : '#813405'
+    ALTDEN : '#813405'
+    VD : '#813405'
+    VINDEN : '#813405'
+    DV : '#813405'
+    DA : '#813405'
+    ARC: "#678cc6"
