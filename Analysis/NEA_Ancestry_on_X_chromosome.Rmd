@@ -16,7 +16,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Functions
 
 ```{r eval=T,echo=F,results='hide'}
-source("~/EMH_Introgression_Project/Introgression_Detection/scripts/Analysis_R_functions.R")
+source("Analysis_R_functions.R")
 ```
 
 
@@ -25,7 +25,7 @@ source("~/EMH_Introgression_Project/Introgression_Detection/scripts/Analysis_R_f
 ```{r eval=T,echo=F,results='hide'}
 chrom_ <- c("1" ,"2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22", "X" )
 
-cluster_used = "clusterF3D_broad"
+cluster_used = "population_cluster"
 
 
 genetic_map = "Shared_Map"
@@ -44,16 +44,22 @@ called_type = as.vector(c("state"))
 ## Meta Data
 
 ```{r eval=T,echo=F,results='hide'}
-# folder
-folder_path = "~/EMH_Introgression_Project/Introgression_Detection/Preliminary_Paper_Figures/Shared_Map/"
+############## change path  ##################
+folder_path = "Paper_figures"
 
-folder_path_data = "/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/Preliminary_Paper_Figures_Data/"
+folder_path_data = "Paper_figures_Data/"
 
-folder_path_Sup_Tables = "~/EMH_Introgression_Project/Introgression_Detection/Supplements_Tables/"
+folder_path_Sup_Tables = "Supplements_Tables/"
 
-Joint_Meta <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clusters_using_1240k.csv") %>% 
-  filter(sample_name != "Mota",SuperclusterF3D != "Africa") %>% mutate(sample_name=gsub( "-", ".", sample_name)) %>%
-  mutate(Sex = ifelse(Sex == "F","female",ifelse(Sex == "M","male",Sex)))
+path_to_dryad_downloaded_files = "Dryad_folder"
+
+path_to_my_admixfrog_folder_ancient = "Admixfrog_res_ancient"
+
+path_to_my_admixfrog_folder_present = "Admixfrog_res_present"
+##############################################
+
+Joint_Meta <- read.csv(paste0(path_to_dryad_downloaded_files,"Meta_Data_individuals.csv")) %>% 
+  filter(sample_name != "Mota",superpopulation_cluster != "Africa") %>% mutate(sample_name=gsub( "-", ".", sample_name))
 
 cluster_color_broad_all = data.frame(clusterF3D_broad_all = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","North_Africa","postLGM-WEurHG","preLGM-WEurHG","SA","Sahul","Satsurblia","Siberia&Americas" ,"Sub-Sahara-Africa","SWA","WEur","Yamnaya"),
                                      cluster_color = 
