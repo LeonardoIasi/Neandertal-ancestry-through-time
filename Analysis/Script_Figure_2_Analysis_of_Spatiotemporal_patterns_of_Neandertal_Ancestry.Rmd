@@ -18,6 +18,110 @@ Here we focus on non-African individuals and how the sharing of their Neandertal
 
 ```{r eval=T,echo=F,results='hide'}
 source("Analysis_R_functions.R")
+Get_Pop_masked_multiinter_fn <- function(Meta_info,All_rle,suffix,cluster_used){
+  Pop_bed_names_PD = c()
+  for(pop_ in unique(Meta_info[[cluster_used]])){
+    
+    print(pop_)
+    NEA_Overlap_data = All_rle %>% filter(sample %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
+      inner_join(.,Meta_info[,c("sample_name",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
+      filter((!!sym(cluster_used)) == pop_) %>% group_overlaps_fn(.)  %>% 
+      group_by(chrom,group_id) %>% dplyr::summarise(start_pos = min(pos),end_pos = max(pos_end)) %>% 
+      mutate(pos_len = end_pos - start_pos) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
+      mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,start_pos,end_pos)
+    
+    pop_ = gsub("&","_",pop_)
+    
+    write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$group_id),file =paste("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/",pop_,"_NEA_ancestry_unmasked",suffix,".bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
+    Pop_bed_names_PD = c(Pop_bed_names_PD,paste("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/",pop_,"_NEA_ancestry_unmasked",suffix,".bed",sep=""))
+    
+  }
+  
+  
+  system(paste0("bedtools multiinter -i ",paste(Pop_bed_names_PD, collapse=' ',sep = " ")," > ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Pop_NEA_ancestry_unmasked",suffix,".bed"))
+  
+  system(paste0("bedtools subtract -a ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Pop_NEA_ancestry_unmasked",suffix,".bed -b ~/EMH_Introgression_Project/Introgression_Detection/ref/bed/AA_Mask_joint.bed  > ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Pop_NEA_ancestry_masked",suffix,".bed
+  "))
+  
+  Pop_masked_multiinter_all_combinations <- read.table(paste0("~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Pop_NEA_ancestry_masked",suffix,".bed"),col.names = c("chrom","start","end","n_overlaps","combination",unique(Meta_info$clusterF3D))) %>% 
+    mutate(seg_length = end - start) %>%
+    mutate(combination_names = apply(.[6:(length(.)-1)], 1, function(x) paste(names(which(x >0)),collapse = ","))) %>%
+    mutate(across(6:(length(.)-2), ~ ifelse(. == 1, cur_column(), 0)))  %>% 
+    group_by(n_overlaps,combination_names,!!!syms(colnames(.)[6:(length(.)-2)]))  %>% 
+    dplyr::summarize(Unique_segs_in_Mb = sum(as.numeric(seg_length),na.rm = T)) %>% ungroup() %>% 
+    mutate(Unique_segs_in_Mb = Unique_segs_in_Mb/1e6) %>% mutate(n_overlaps = ifelse(n_overlaps == 1,"Unique","Shared")) %>%
+    pivot_longer(!c(combination_names,Unique_segs_in_Mb,n_overlaps),names_to = "Pop", values_to = "Value") %>% 
+    filter(Value != "0") %>% group_by(Pop,n_overlaps,combination_names) %>% dplyr::summarize(Amount_ancestry_in_Mb = sum(Unique_segs_in_Mb)) %>%
+    group_by(Pop) %>%
+    mutate(Amount_normalized = Amount_ancestry_in_Mb / sum(Amount_ancestry_in_Mb), Total_Nea_ancestry = sum(Amount_ancestry_in_Mb)) %>% 
+    mutate(Pop = ifelse(Pop == "Siberia.Americas","Siberia&Americas",Pop),Pop = gsub( "\\.", "-", Pop))
+  
+  Pop_masked_multiinter_all_combinations <- Meta_info  %>% filter(sample_name %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
+    dplyr::select(Cov,(!!sym(cluster_used)),prop_callable) %>% group_by((!!sym(cluster_used))) %>% 
+    summarize(n_ind = n(),ave_cov = mean(Cov), sd_cov = sd(Cov),min_cov = min(Cov),max_cov = max(Cov),
+              ave_prop_cal=mean(prop_callable),sd_prop_cal=sd(prop_callable),min_prop_cal=min(prop_callable),max_prop_cal=max(prop_callable))  %>%
+    inner_join(Pop_masked_multiinter_all_combinations,.,by=c("Pop"={{cluster_used}})) %>%
+    mutate(plot_lable = paste(Pop,"n =",n_ind,sep=" "))
+  
+  write.table(Pop_masked_multiinter_all_combinations,
+              file = paste0(folder_path_save,"Pop_masked_multiinter_all_combinations",suffix,".txt"),quote = F,row.names = F,sep="\t")
+}
+
+Summaries_single_sample_unique_frags_fn <- function(file_path_prefix,file_path_sufix,Meta_data){
+  for(i in 1:n_bootstrap){
+    if(i == 1){
+      Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap <- read.table(paste0(file_path_prefix,i,file_path_sufix),col.names = c("chrom","start","end","n_overlaps","combination",unique(Meta_data[[cluster_used]]))) %>%
+        mutate(seg_length = end - start) %>%
+        mutate(combination_names = apply(.[6:(length(.)-1)], 1, function(x) paste(names(which(x >0)),collapse = ","))) %>%
+        mutate(across(6:(length(.)-2), ~ ifelse(. == 1, cur_column(), 0)))  %>% 
+        group_by(n_overlaps,combination_names,!!!syms(colnames(.)[6:(length(.)-2)]))  %>% 
+        dplyr::summarize(Unique_segs_in_Mb = sum(as.numeric(seg_length),na.rm = T)) %>% ungroup() %>% 
+        mutate(Unique_segs_in_Mb = Unique_segs_in_Mb/1e6) %>% mutate(n_overlaps_type = ifelse(n_overlaps == 1,"Unique","Shared")) %>%
+        pivot_longer(!c(combination_names,Unique_segs_in_Mb,n_overlaps,n_overlaps_type),names_to = "Pop", values_to = "Value") %>% 
+        filter(Value != "0") %>% group_by(Pop,n_overlaps,n_overlaps_type,combination_names) %>% dplyr::summarize(Amount_ancestry_in_Mb = sum(Unique_segs_in_Mb)) %>%
+        group_by(Pop) %>%
+        mutate(Amount_normalized = Amount_ancestry_in_Mb / sum(Amount_ancestry_in_Mb), Total_Nea_ancestry = sum(Amount_ancestry_in_Mb)) %>% 
+        mutate(Pop = ifelse(Pop == "Siberia.Americas","Siberia&Americas",Pop),Pop = gsub( "\\.", "-", Pop)) %>% mutate(bootstrap = i)
+    }else{
+      x <- read.table(paste0(file_path_prefix,i,file_path_sufix),col.names = c("chrom","start","end","n_overlaps","combination",unique(Meta_data[[cluster_used]]))) %>%
+        mutate(seg_length = end - start) %>%
+        mutate(combination_names = apply(.[6:(length(.)-1)], 1, function(x) paste(names(which(x >0)),collapse = ","))) %>%
+        mutate(across(6:(length(.)-2), ~ ifelse(. == 1, cur_column(), 0)))  %>% 
+        group_by(n_overlaps,combination_names,!!!syms(colnames(.)[6:(length(.)-2)]))  %>% 
+        dplyr::summarize(Unique_segs_in_Mb = sum(as.numeric(seg_length),na.rm = T)) %>% ungroup() %>% 
+        mutate(Unique_segs_in_Mb = Unique_segs_in_Mb/1e6) %>% mutate(n_overlaps_type = ifelse(n_overlaps == 1,"Unique","Shared")) %>%
+        pivot_longer(!c(combination_names,Unique_segs_in_Mb,n_overlaps,n_overlaps_type),names_to = "Pop", values_to = "Value") %>% 
+        filter(Value != "0") %>% group_by(Pop,n_overlaps,n_overlaps_type,combination_names) %>% dplyr::summarize(Amount_ancestry_in_Mb = sum(Unique_segs_in_Mb)) %>%
+        group_by(Pop) %>%
+        mutate(Amount_normalized = Amount_ancestry_in_Mb / sum(Amount_ancestry_in_Mb), Total_Nea_ancestry = sum(Amount_ancestry_in_Mb)) %>% 
+        mutate(Pop = ifelse(Pop == "Siberia.Americas","Siberia&Americas",Pop),Pop = gsub( "\\.", "-", Pop)) %>% mutate(bootstrap = i)
+      
+      Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap <- rbind(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap,x)
+    }
+    
+  }
+  
+  Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_summary <- Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap %>%  group_by(Pop,combination_names,n_overlaps,n_overlaps_type) %>% 
+    summarize(mean_amount = mean(Amount_ancestry_in_Mb),sd_amount=sd(Amount_ancestry_in_Mb),min_amount = min(Amount_ancestry_in_Mb),max_amount = max(Amount_ancestry_in_Mb),
+              mean_amount_normalized = mean(Total_Nea_ancestry),sd_amount_normalized=sd(Total_Nea_ancestry),min_amount_normalized = min(Total_Nea_ancestry),max_amount_normalized = max(Total_Nea_ancestry),
+              mean_total_amount = mean(Total_Nea_ancestry),sd_total_amount=sd(Total_Nea_ancestry),min_total_amount = min(Total_Nea_ancestry),max_total_amount = max(Total_Nea_ancestry))
+  
+  Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_summary_annotated <- Meta_data  %>% filter(sample_name %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
+    dplyr::select(Cov,(!!sym(cluster_used)),prop_callable) %>% group_by((!!sym(cluster_used))) %>% 
+    summarize(n_ind = n(),ave_cov = mean(Cov), sd_cov = sd(Cov),min_cov = min(Cov),max_cov = max(Cov),
+              ave_prop_cal=mean(prop_callable),sd_prop_cal=sd(prop_callable),min_prop_cal=min(prop_callable),max_prop_cal=max(prop_callable)) %>%
+    inner_join(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_summary,.,by=c("Pop"={{cluster_used}})) 
+  
+  Single_Sample_Pop_Bootstrap_unique <- Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_summary_annotated %>%
+    filter(n_overlaps == 1) %>% 
+    mutate(combination_names = ifelse(combination_names == "Siberia.Americas","Siberia&Americas",combination_names),
+           combination_names = gsub( "\\.", "-", combination_names)) %>%
+    left_join(.,cluster_color,by=c("combination_names"={{cluster_used}})) %>%
+    mutate(plot_lable = paste(combination_names,"n =",n_ind,sep=" "))
+  
+  return(list(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap,Single_Sample_Pop_Bootstrap_unique))
+}
+
 ```
 
 ## Meta Data
@@ -38,7 +142,10 @@ path_to_my_admixfrog_folder_present = "Admixfrog_res_present"
 ##############################################
 
 Joint_Meta <- read.csv(paste0(path_to_dryad_downloaded_files,"Meta_Data_individuals.csv")) %>% 
-  filter(sample_name != "Mota",superpopulation_cluster != "Africa") %>% mutate(sample_name=gsub( "-", ".", sample_name))
+  filter(sample_name != "Mota",superpopulation_cluster != "Africa") %>% filter(!str_detect(ff, pattern = "^HG")) %>% mutate(sample_name=gsub( "-", ".", sample_name))
+
+Joint_Meta_All <- read.csv(paste0(path_to_dryad_downloaded_files,"Meta_Data_individuals.csv")) %>% 
+  filter(sample_name != "Mota",superpopulation_cluster != "Africa") %>%  mutate(sample_name=gsub( "-", ".", sample_name))
 
 
 cluster_color_broad_all = data.frame(clusterF3D_broad_all = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","North_Africa","Oceania","postLGM-WEurHG","preLGM-WEurHG","SA","Satsurblia","Siberia&Americas" ,"Sub-Sahara-Africa","SWA","WEur","Yamnaya"),
@@ -91,7 +198,7 @@ First we construct a PCS from the overlaps of NEandertal segments between indivi
 
 ```{r eval=T,echo=F,results='hide'}
 EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
-Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0]
+Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0,]
 
 rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv")) %>%
   filter(genetic_map == !!genetic_map)
@@ -107,7 +214,7 @@ SGDP_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_PD,type_ = cal
 
 system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_NEA_state,SGDP_file_names_NEA_state), collapse=' ',sep = " ")," > Bed_files/All_NEA_state_with_indcount_unmasked_matrix.bed",sep=" "))
 
-system(past0("bedtools subtract -a Bed_files/All_NEA_state_with_indcount_unmasked_matrix.bed  -b ",path_to_dryad_downloaded_files,"/AA_Mask_joint.bed > PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_masked_matrix.bed
+system(past0("bedtools subtract -a Bed_files/All_NEA_state_with_indcount_unmasked_matrix.bed  -b ",path_to_dryad_downloaded_files,"/non_callable_regions_in_physical_positions.csv > PCA_Neandertal_Ancestry/All_NEA_state_with_indcount_masked_matrix.bed
 "))
 
 
@@ -215,6 +322,95 @@ save(Segment_PCA_all_loadings_red_long_PC1,file = paste0(folder_path_data,"PCA_o
 save(Segment_PCA_all_loadings_red_long_PC2,file = paste0(folder_path_data,"PCA_on_NEA_ancestry_Highest_Loadings_PC2.RData"))
 
 
+```
+
+### using 1KG for PCA
+
+```{r eval=T,echo=F,results='hide'}
+EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
+Present_Day_SGDP_sample_list = Joint_Meta_All$sample_name[Joint_Meta$ML_BP_Mean == 0,] %>% filter(!str_detect(sample_name, pattern = "^HG"))
+
+subset_1kG <- Joint_Meta_All %>% filter(str_detect(sample_name, pattern = "^HG")) %>% 
+  group_by(clusterF3D_broad) %>% sample_n(size = 50)
+
+Present_Day_1KG_sample_list = subset_1kG
+
+rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv")) %>%
+  filter(genetic_map == !!genetic_map)
+
+rle_EMH = rle_file %>% filter(sample %in% EMH_sample_list)
+
+rle_SGDP = rle_file %>% filter(sample %in% Present_Day_SGDP_sample_list)
+
+rle_1KG = rle_file %>% filter(sample %in% Present_Day_1KG_sample_list)
+
+EMH_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_EMH,type_ = called_type,target_ = states,chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP,optional_col = "frag_ID")
+
+SGDP_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_SGDP,type_ = called_type,target_ = states,chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP,optional_col = "frag_ID")
+
+G1K_file_names_NEA_state_red = write_bed_from_All_rle(rle_file = rle_1KG,type_ = called_type,target_ = states,chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP,optional_col = "frag_ID")
+
+
+system(paste("bedtools multiinter -i ",paste(c(EMH_file_names_NEA_state,SGDP_file_names_NEA_state,G1K_file_names_NEA_state_red), collapse=' ',sep = " ")," > All_NEA_state_with_indcount_unmasked_matrix_with_1kG.bed",sep=" "))
+
+system("bedtools subtract -a All_NEA_state_with_indcount_unmasked_matrix_with_1kG.bed  -b AA_Mask_joint.bed > All_NEA_state_with_indcount_masked_matrix_with_1kG.bed
+")
+
+
+sample_names <- c()
+for(i in c(EMH_file_names_NEA_state)){
+  smp_name = strsplit(x = tail(unlist(strsplit(i,split = "/")),1),split = "_NEA")[[1]][1]
+  sample_names <- c(sample_names,smp_name)
+}
+
+for(i in c(SGDP_file_names_NEA_state)){
+  smp_name = strsplit(x = tail(unlist(strsplit(i,split = "/")),1),split = "_NEA")[[1]][1]
+  sample_names <- c(sample_names,smp_name)
+}
+
+for(i in c(G1k_file_names_NEA_state_red)){
+  smp_name = strsplit(x = tail(unlist(strsplit(i,split = "/")),1),split = "_NEA")[[1]][1]
+  sample_names <- c(sample_names,smp_name)
+}
+
+Nea_ancestry_ind_count_matrix <- read.table("All_NEA_state_with_indcount_masked_matrix_with_1kG.bed",col.names = c("chrom","start","end","n_ind","ind_index",sample_names))
+
+write.table(Nea_ancestry_ind_count_matrix,"All_NEA_state_with_indcount_masked_matrix_with_1kG.csv",quote = F,row.names = F)
+
+Segment_cluster_data <- read.table("All_NEA_state_with_indcount_masked_matrix_with_1kG.csv",sep=" ", header=T)
+
+samples_x <- Joint_Meta_all  %>% filter(SuperclusterF3D == "Africa") %>% .$sample_name
+
+sample_names_red <- gsub("-",".",sample_names[sample_names %notin% gsub("\\.","-",samples_x)])
+
+Segment_cluster_data_red <- Segment_cluster_data %>% dplyr::select(chrom,start,end,n_ind,ind_index,!!c(sample_names_red))
+
+seg.pca <- prcomp(t(Segment_cluster_data_red[,c(6:length(Segment_cluster_data_red))]), center = TRUE,rank. = 5)  
+
+Segment_PCA_all_anno <- as.data.frame(seg.pca$x) %>% rownames_to_column(.,"sample_name") %>%
+  inner_join(.,All_Joint_Meta,by=c("sample_name"="sample_name")) %>%
+  filter(duplicated(sample_name) == FALSE)
+
+Segment_PCA_all_importance <- summary(seg.pca)$importance
+
+Segment_PCA_all_anno_PD <- Segment_PCA_all_anno %>% filter(ML_BP_Mean == 0)
+
+Segment_PCA_plots_all_PD <-  Segment_PCA_all_anno_PD %>%
+  ggplot(data=, aes(x=PC1, y=PC2,color=clusterF3D_broad,shape=clusterF3D_broad)) +
+  geom_point() +
+  xlab(paste("PC1",round(Segment_PCA_all_importance[2,"PC1"] * 100,1),"%",sep=" ")) +
+  ylab(paste("PC2",round(Segment_PCA_all_importance[2,"PC2"]* 100,1),"%",sep=" ")) +
+  scale_color_manual(name = "",values = 1:length(unique(Segment_PCA_all_anno_PD$clusterF3D_broad))) +
+  scale_shape_manual(name = "",values = 1:length(unique(Segment_PCA_all_anno_PD$clusterF3D_broad))) +
+  THEME +
+  theme(legend.position = "bottom",
+        aspect.ratio=1/1,
+        legend.text = element_text(size=9, face="bold", color = "black"),
+        axis.title.x = element_text(size=12, face="bold", color = "black"),
+        axis.title.y = element_text(size=12, face="bold", color = "black"))
+
+
+ggsave(paste0(folder_path_save,"P_Segment_PCA_plots_all_PD.png"),Segment_PCA_plots_all_PD,device = "png",width = 8,height = 8)
 ```
 
 ## Unique segments
@@ -468,6 +664,704 @@ for(i in 1:n_bootstrap){
 
 write.table(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_wo_Oase,paste0(folder_path_data,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_wo_Oase.csv"),quote = F,row.names = F,sep = "\t")
 ```
+
+### replication using 1KG and all combination of SGDP, ancient and 1KG
+
+```{r eval=T,echo=F,results='hide'}
+
+EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
+Present_Day_SGDP_sample_list = Joint_Meta_All$sample_name[Joint_Meta$ML_BP_Mean == 0,] %>% filter(!str_detect(sample_name, pattern = "^HG"))
+
+Present_Day_1KG_sample_list = Joint_Meta_All$sample_name[Joint_Meta$ML_BP_Mean == 0,] %>% filter(str_detect(sample_name, pattern = "^HG"))
+
+rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv")) %>%
+  filter(genetic_map == !!genetic_map)
+
+rle_EMH = rle_file %>% filter(sample %in% EMH_sample_list) %>% 
+  filter(type == called_type,target == states,chrom %in% chrom_,map_len >= min_len_ancient, pos_len >= min_bp_len_ancient) %>%
+  mutate(Data_Set = "ancient")
+
+rle_SGDP = rle_file %>% filter(sample %in% Present_Day_SGDP_sample_list) %>% 
+  filter(type == called_type,target == states,chrom %in% chrom_,map_len >= min_len_present, pos_len >= min_bp_len_present) %>%
+  mutate(sample = gsub("-", "\\.", sample)) %>% mutate(Data_Set = "SGDP")
+
+rle_1KG = rle_file %>% filter(sample %in% Present_Day_1KG_sample_list) %>% 
+  filter(type == called_type,target == states,chrom %in% chrom_,map_len >= min_len_present, pos_len >= min_bp_len_present) %>%
+  mutate(sample = gsub("-", "\\.", sample)) %>% mutate(Data_Set = "G1k")
+
+All_rle <- rbind(rle_EMH,rle_SGDP,rle_1KG) 
+
+Anotation_data <- Joint_Meta_All %>% dplyr::select(sample_name,ML_BP_Mean,population_cluster) %>% distinct(.,.keep_all = T)
+
+All_rle_annotated <- left_join(All_rle,Anotation_data,by=c("sample" = "sample_name"))
+
+## Unique segments including 1 kG
+
+
+#### All together
+
+Get_Pop_masked_multiinter_fn(Meta_info = All_Joint_Meta_unrelated,
+                             All_rle = All_rle,
+                             suffix = "_all_pops_with_1kG",
+                             cluster_used=cluster_used)
+
+Pop_masked_multiinter_all_combinations_all_together <- read.csv(paste0(folder_path_save,"Pop_masked_multiinter_all_combinations_all_pops_with_1kG.txt"),sep="\t") %>%
+  mutate(Data_Combination = "ancient + 1kG + SGDP")
+
+P_Unique_vs_Shared_all_pops <- Pop_masked_multiinter_all_combinations_all_together %>% filter(n_overlaps == "Unique") %>%
+  ggplot(., aes(x = fct_reorder(plot_lable, -Amount_normalized), y = Amount_normalized)) +
+  geom_bar(stat="identity", position="dodge") +
+  xlab("") +
+  ylab("Proportion of unique\nNeandertal ancestry") +
+  THEME +
+  theme(
+    axis.text = element_text(size = 8,face="bold"),
+    axis.text.x = element_text(angle = 90, hjust=1,face="bold",size = 10),
+    legend.position = "none") 
+
+#ggsave(paste0(folder_path_save,"P_Unique_vs_Shared_all_pops_with_1kG.png"),P_Unique_vs_Shared_all_pops,device = "png",width = 10,height = 8)
+
+#### ancient pops with SGDP
+
+All_Joint_Meta_unrelated_ancient_SGDP <- All_Joint_Meta_unrelated  %>%
+  filter(ML_BP_Mean > 0 | Data_Set == "SGDP")
+
+
+Get_Pop_masked_multiinter_fn(Meta_info = All_Joint_Meta_unrelated_ancient_SGDP,
+                             All_rle = All_rle,
+                             suffix = "_ancient_and_SGDP",
+                             cluster_used=cluster_used)
+
+Pop_masked_multiinter_all_combinations_ancient_SGDP <- read.csv(paste0(folder_path_save,"Pop_masked_multiinter_all_combinations_ancient_and_SGDP.txt"),sep="\t") %>%
+  mutate(Data_Combination = "ancient + SGDP")
+
+P_Unique_vs_Shared_ancient_and_SGDP <- Pop_masked_multiinter_all_combinations_ancient_SGDP %>% filter(n_overlaps == "Unique") %>%
+  ggplot(., aes(x = fct_reorder(plot_lable, -Amount_normalized), y = Amount_normalized)) +
+  geom_bar(stat="identity", position="dodge") +
+  xlab("") +
+  ylab("Proportion of unique\nNeandertal ancestry") +
+  THEME +
+  theme(
+    axis.text = element_text(size = 8,face="bold"),
+    axis.text.x = element_text(angle = 90, hjust=1,face="bold",size = 10),
+    legend.position = "none") 
+
+#ggsave(paste0(folder_path_save,"P_Unique_vs_Shared_all_pops_with_1kG.png"),P_Unique_vs_Shared_all_pops,device = "png",width = 10,height = 8)
+
+
+
+#### ancient pops with 1 kG
+
+All_Joint_Meta_unrelated_ancient_1kG <- All_Joint_Meta_unrelated  %>%
+  filter(ML_BP_Mean > 0 | Data_Set == "G1k") %>%
+  filter(clusterF3D_broad %notin% c("SWA","Oceania"))
+
+Get_Pop_masked_multiinter_fn(Meta_info = All_Joint_Meta_unrelated_ancient_1kG,
+                             All_rle = All_rle,
+                             suffix = "_ancient_and_1kG",
+                             cluster_used=cluster_used)
+
+Pop_masked_multiinter_all_combinations_ancient_1kG <- read.csv(paste0(folder_path_save,"Pop_masked_multiinter_all_combinations_ancient_and_1kG.txt"),sep="\t") %>%
+  mutate(Data_Combination = "ancient + 1kG")
+
+P_Unique_vs_Shared_ancient_and_1kG <- Pop_masked_multiinter_all_combinations_ancient_1kG %>% filter(n_overlaps == "Unique") %>%
+  ggplot(., aes(x = fct_reorder(plot_lable, -Amount_normalized), y = Amount_normalized)) +
+  geom_bar(stat="identity", position="dodge") +
+  xlab("") +
+  ylab("Proportion of unique\nNeandertal ancestry") +
+  THEME +
+  theme(
+    axis.text = element_text(size = 8,face="bold"),
+    axis.text.x = element_text(angle = 90, hjust=1,face="bold",size = 10),
+    legend.position = "none") 
+
+#ggsave(paste0(folder_path_save,"P_Unique_vs_Shared_all_pops_with_1kG.png"),P_Unique_vs_Shared_all_pops,device = "png",width = 10,height = 8)
+
+Pop_masked_multiinter_all_combinations_all_together_combinations <- rbind(Pop_masked_multiinter_all_combinations_all_together,
+                                                                          Pop_masked_multiinter_all_combinations_ancient_SGDP,
+                                                                          Pop_masked_multiinter_all_combinations_ancient_1kG) %>%
+  mutate(Pop_lables = factor(Pop, levels=c("EarlyOoA","preLGM-WEurHG","Oceania","EAS","WEur","SA",
+                                           "ANS","AncientEAS","postLGM-WEurHG","Satsurblia","SWA","ANE","Siberia&Americas","Yamnaya")),
+         Data_Combination = factor(Data_Combination, levels=c("ancient + 1kG + SGDP","ancient + SGDP","ancient + 1kG")))
+
+
+
+P_Unique_vs_Shared_ancient_and_PD <- Pop_masked_multiinter_all_combinations_all_together_combinations %>% 
+  filter(n_overlaps == "Unique") %>%
+  ggplot(., aes(x = Pop_lables, y = Amount_normalized,fill= Data_Combination)) +
+  geom_bar(stat="identity", position="dodge") +
+  xlab("") +
+  ylab("Proportion of unique\nNeandertal ancestry") +
+  THEME +
+  labs(fill="Data set combination") +
+  theme(
+    axis.text = element_text(size = 8,face="bold"),
+    axis.text.x = element_text(angle = 90, hjust=1,face="bold",size = 10),
+    legend.position = "bottom")
+
+#### only PD 1kG
+
+All_Joint_Meta_unrelated_PD1kG <- All_Joint_Meta_unrelated  %>%
+  filter(ML_BP_Mean == 0,Data_Set == "G1k")
+
+Get_Pop_masked_multiinter_fn(Meta_info = All_Joint_Meta_unrelated_PD1kG,
+                             All_rle = All_rle,
+                             suffix = "_only_PD1kG",
+                             cluster_used=cluster_used)
+
+Pop_masked_multiinter_all_combinations_PD1kG <- read.table(paste0(folder_path_save,"Pop_masked_multiinter_all_combinations_only_PD1kG.txt"),sep="\t",header=T) %>%
+  mutate(Data_Combination = "1kG")
+
+P_Unique_vs_Shared_PD1kG <- Pop_masked_multiinter_all_combinations_PD1kG %>% filter(n_overlaps == "Unique") %>%
+  ggplot(., aes(x = fct_reorder(plot_lable, -Amount_normalized), y = Amount_normalized)) +
+  geom_bar(stat="identity", position="dodge") +
+  xlab("") +
+  ylab("Proportion of unique\nNeandertal ancestry") +
+  THEME +
+  theme(
+    axis.text = element_text(size = 8,face="bold"),
+    axis.text.x = element_text(angle = 90, hjust=1,face="bold",size = 10),
+    legend.position = "none") 
+
+#ggsave(paste0(folder_path_save,"P_Unique_vs_Shared_only_pd1kG.png"),P_Unique_vs_Shared_PD1kG,device = "png",width = 10,height = 8)
+
+#### only PD SGDP
+
+All_Joint_Meta_unrelated_PDSGDP <- All_Joint_Meta_unrelated  %>%
+  filter(ML_BP_Mean == 0,Data_Set == "SGDP")
+
+
+Get_Pop_masked_multiinter_fn(Meta_info = All_Joint_Meta_unrelated_PDSGDP,
+                             All_rle = All_rle,
+                             suffix = "_only_PDSGDP",
+                             cluster_used=cluster_used)
+
+Pop_masked_multiinter_all_combinations_PDSGDP <- read.table(paste0(folder_path_save,"Pop_masked_multiinter_all_combinations_only_PDSGDP.txt"),sep="\t",header=T) %>%
+  mutate(Data_Combination = "SGDP")
+
+P_Unique_vs_Shared_PDSGDP <- Pop_masked_multiinter_all_combinations_PDSGDP %>% filter(n_overlaps == "Unique") %>%
+  ggplot(., aes(x = fct_reorder(plot_lable, -Amount_normalized), y = Amount_normalized)) +
+  geom_bar(stat="identity", position="dodge") +
+  xlab("") +
+  ylab("Proportion of unique\nNeandertal ancestry") +
+  THEME +
+  theme(
+    axis.text = element_text(size = 8,face="bold"),
+    axis.text.x = element_text(angle = 90, hjust=1,face="bold",size = 10),
+    legend.position = "none") 
+
+#ggsave(paste0(folder_path_save,"P_Unique_vs_Shared_only_pdSGDP.png"),P_Unique_vs_Shared_PDSGDP,device = "png",width = 10,height = 8)
+
+
+#### only ancient 
+
+All_Joint_Meta_unrelated_ancient_only <- All_Joint_Meta_unrelated %>% 
+  filter(ML_BP_Mean > 0)
+
+Get_Pop_masked_multiinter_fn(Meta_info = All_Joint_Meta_unrelated_ancient_only,
+                             All_rle = All_rle,
+                             suffix = "_only_ancient",
+                             cluster_used=cluster_used)
+
+Pop_masked_multiinter_all_combinations_ancient <- read.table(paste0(folder_path_save,"Pop_masked_multiinter_all_combinations_only_ancient.txt"),header = T,sep="\t") %>%
+  mutate(Data_Combination = "ancient")
+
+P_Unique_vs_Shared_ancient_only <- Pop_masked_multiinter_all_combinations_ancient %>% filter(n_overlaps == "Unique") %>%
+  ggplot(., aes(x = fct_reorder(plot_lable, -Amount_normalized), y = Amount_normalized)) +
+  geom_bar(stat="identity", position="dodge") +
+  xlab("") +
+  ylab("Proportion of unique\nNeandertal ancestry") +
+  THEME +
+  theme(
+    axis.text = element_text(size = 8,face="bold"),
+    axis.text.x = element_text(angle = 90, hjust=1,face="bold",size = 10),
+    legend.position = "none") 
+
+#ggsave(paste0(folder_path_save,"P_Unique_vs_Shared_only_ancient_only_pops_with_1kG.png"),P_Unique_vs_Shared_ancient_only,device = "png",width = 10,height = 8)
+
+#### plot together ###
+
+P_Unique_vs_Shared_ancient <- ggpubr::ggarrange(P_Unique_vs_Shared_ancient_and_PD,ggpubr::ggarrange(P_Unique_vs_Shared_PD1kG,P_Unique_vs_Shared_PDSGDP,
+                                                                                                    P_Unique_vs_Shared_ancient_only,ncol = 3,
+                                                                                                    labels = c("B","C","D"),align = "hv"),nrow=2,labels = c("A",""))
+
+ggsave(paste0(folder_path_save,"P_Unique_vs_Shared_ALL_pops_with_1kG.png"),P_Unique_vs_Shared_ancient,device = "png",width = 10,height = 9)
+
+
+Combined_table_Shared_unique_all <- rbind(Pop_masked_multiinter_all_combinations_all_together,
+                                          Pop_masked_multiinter_all_combinations_ancient_SGDP,
+                                          Pop_masked_multiinter_all_combinations_ancient_1kG,
+                                          Pop_masked_multiinter_all_combinations_PDSGDP,
+                                          Pop_masked_multiinter_all_combinations_PD1kG,
+                                          Pop_masked_multiinter_all_combinations_ancient) %>% 
+  filter(Amount_ancestry_in_Mb >= 5)
+
+
+
+
+write.table(Combined_table_Shared_unique_all,
+            paste0(folder_path_save,"All_Combined_table_Shared_unique_all_revisions.csv"),quote = F,row.names = F,sep = "\t")
+
+## Single sample all pops
+
+n_bootstrap = 100
+for(i in 1:n_bootstrap){
+  print(paste0("Bootstrap: ",i))
+  Pop_bed_names = c()
+  for(pop_ in unique(All_Joint_Meta_unrelated[[cluster_used]])){
+    
+    #print(pop_)
+    pop_ind <-  sample(All_Joint_Meta_unrelated$sample_name[All_Joint_Meta_unrelated[[cluster_used]] == pop_],1,F)
+    NEA_Overlap_data = All_rle %>% filter(sample %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
+      inner_join(.,All_Joint_Meta_unrelated[,c("sample_name",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
+      filter(sample == pop_ind) %>% mutate(start_pos = pos,end_pos = pos_end) %>% 
+      mutate(pos_len = end_pos - start_pos) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
+      mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,start_pos,end_pos)
+    
+    pop_ = gsub("&","_",pop_)
+    
+    write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$id),file =paste("Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,"_with_1kG.bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
+    Pop_bed_names = c(Pop_bed_names,paste("Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,"_with_1kG.bed",sep=""))
+    
+  }
+  
+  system(paste("bedtools multiinter -i ",paste(Pop_bed_names, collapse=' ',sep = " ")," > Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_with_1kG.bed",sep=""))
+  
+  system(paste0("bedtools subtract -a Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_with_1kG.bed -b AA_Mask_joint.bed  > Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",i,"_with_1kG.bed
+  "))
+  system(paste0("rm  Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_with_1kG.bed"))
+}
+
+
+
+
+Single_sample_overlap_all_pops <- Summaries_single_sample_unique_frags_fn(file_path_prefix = "Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",
+                                                                          file_path_sufix = "_with_1kG.bed",Meta_data = All_Joint_Meta_unrelated)
+
+Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap <- Single_sample_overlap_all_pops[[1]]
+Single_Sample_Pop_Bootstrap_unique <- Single_sample_overlap_all_pops[[2]]
+
+write.table(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap,
+            file = paste0(folder_path_save,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_all_pops_with_1kG.txt"),quote = F,row.names = F,sep="\t")
+write.csv(Single_Sample_Pop_Bootstrap_unique,
+          file = paste0(folder_path_save,"Single_Sample_Pop_Bootstrap_unique_all_pops_with_1kG.csv"),quote = F,row.names = F)
+
+Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap <- read.csv(paste0(folder_path_save,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_all_pops_with_1kG.txt"),sep="\t")
+
+pairwise.t.test_res <- pairwise.t.test(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap$Amount_ancestry_in_Mb[Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap$n_overlaps==1], Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap$combination_names[Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap$n_overlaps==1])
+
+pairwise.t.test_res_pvals <- Reshape_pairwise.t.test_PopClust_fn(pairwise.t.test_res)
+
+write.csv(pairwise.t.test_res_pvals,paste0(folder_path_save,"Pairwise_t_test_for_unique_segment_all_pops_with_1kG.csv"),quote = F,row.names = T)
+
+
+Single_Sample_Pop_Bootstrap_unique <- read.csv(paste0(folder_path_save,"Single_Sample_Pop_Bootstrap_unique_all_pops_with_1kG.csv")) %>%
+  mutate(Data_Combination = "ancient + 1kG + SGDP")
+
+P_Single_Unique_segments_with_bootstrap <- ggplot(Single_Sample_Pop_Bootstrap_unique, aes(x = fct_reorder(plot_lable, -mean_amount), y = mean_amount)) +
+  geom_col() +
+  geom_errorbar(aes(ymin=mean_amount-sd_amount, ymax=mean_amount+sd_amount), width=.2) +
+  ylab("Length in Mb") +
+  xlab("") +
+  THEME +
+  theme(axis.text = element_text(size = 8),
+        axis.text.x = element_text(size=10, face="bold", color = "black",angle = 90,hjust=1),
+        axis.title.x = element_text(size=12, face="bold", color = "black"),
+        legend.position = "none") 
+#+scale_fill_manual(name = "Genetic Clusters",labels = cluster_color[[cluster_used]],values = cluster_color$cluster_color) 
+
+ggsave(paste0(folder_path_save,"P_Single_Unique_segments_with_bootstrap_all_pops_with_1kG.png"),P_Single_Unique_segments_with_bootstrap,device = "png",width = 8,height = 10)
+
+## ancient and SGDP
+
+All_Joint_Meta_unrelated_ancient_SGDP <- All_Joint_Meta_unrelated  %>%
+  filter(ML_BP_Mean > 0 | Data_Set == "SGDP") 
+
+n_bootstrap = 100
+for(i in 1:n_bootstrap){
+  print(paste0("Bootstrap: ",i))
+  Pop_bed_names = c()
+  for(pop_ in unique(All_Joint_Meta_unrelated_ancient_SGDP[[cluster_used]])){
+    
+    #print(pop_)
+    pop_ind <-  sample(All_Joint_Meta_unrelated_ancient_SGDP$sample_name[All_Joint_Meta_unrelated_ancient_SGDP[[cluster_used]] == pop_],1,F)
+    NEA_Overlap_data = All_rle %>% filter(sample %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
+      inner_join(.,All_Joint_Meta_unrelated_ancient_SGDP[,c("sample_name",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
+      filter(sample == pop_ind) %>% mutate(start_pos = pos,end_pos = pos_end) %>% 
+      mutate(pos_len = end_pos - start_pos) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
+      mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,start_pos,end_pos)
+    
+    pop_ = gsub("&","_",pop_)
+    
+    write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$id),file =paste("Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,"_ancient_and_SGDP.bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
+    Pop_bed_names = c(Pop_bed_names,paste("Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,"_ancient_and_SGDP.bed",sep=""))
+    
+  }
+  
+  system(paste("bedtools multiinter -i ",paste(Pop_bed_names, collapse=' ',sep = " ")," > Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_ancient_and_SGDP.bed",sep=""))
+  
+  system(paste0("bedtools subtract -a Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_ancient_and_SGDP.bed -b AA_Mask_joint.bed  > Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",i,"_ancient_and_SGDP.bed
+  "))
+  system(paste0("rm  ~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_ancient_and_SGDP.bed"))
+}
+
+
+Single_sample_overlap_ancient_and_SGDP <- Summaries_single_sample_unique_frags_fn(file_path_prefix = "Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",
+                                                                                  file_path_sufix = "_ancient_and_SGDP.bed",Meta_data = All_Joint_Meta_unrelated_ancient_SGDP)
+
+Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap <- Single_sample_overlap_ancient_and_SGDP[[1]]
+Single_Sample_Pop_Bootstrap_unique <- Single_sample_overlap_ancient_and_SGDP[[2]]
+
+write.table(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap,
+            file = paste0(folder_path_save,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_all_pops_ancient_and_SGDP.txt"),quote = F,row.names = F,sep="\t")
+write.csv(Single_Sample_Pop_Bootstrap_unique,
+          file = paste0(folder_path_save,"Single_Sample_Pop_Bootstrap_unique_all_pops_ancient_and_SGDP.csv"),quote = F,row.names = F)
+
+Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancient_and_SGDP <- read.csv(paste0(folder_path_save,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_all_pops_ancient_and_SGDP.txt"),sep="\t")
+
+pairwise.t.test_res <- pairwise.t.test(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancient_and_SGDP$Amount_ancestry_in_Mb[Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancient_and_SGDP$n_overlaps==1], Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancient_and_SGDP$combination_names[Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancient_and_SGDP$n_overlaps==1])
+
+pairwise.t.test_res_pvals <- Reshape_pairwise.t.test_PopClust_fn(pairwise.t.test_res)
+
+write.csv(pairwise.t.test_res_pvals,paste0(folder_path_save,"Pairwise_t_test_for_unique_segment_ancient_SGDP.csv"),quote = F,row.names = T)
+
+
+Single_Sample_Pop_Bootstrap_unique_ancient_and_SGDP <- read.csv(paste0(folder_path_save,"Single_Sample_Pop_Bootstrap_unique_all_pops_ancient_and_SGDP.csv"))  %>%
+  mutate(Data_Combination = "ancient + SGDP")
+
+P_Single_Unique_segments_with_bootstrap_ancient_and_1kG <- ggplot(Single_Sample_Pop_Bootstrap_unique_ancient_and_SGDP, aes(x = fct_reorder(plot_lable, -mean_amount), y = mean_amount)) +
+  geom_col() +
+  geom_errorbar(aes(ymin=mean_amount-sd_amount, ymax=mean_amount+sd_amount), width=.2) +
+  ylab("Length in Mb") +
+  xlab("") +
+  THEME +
+  theme(axis.text = element_text(size = 8),
+        axis.text.x = element_text(size=10, face="bold", color = "black",angle = 90,hjust=1),
+        axis.title.x = element_text(size=12, face="bold", color = "black"),
+        legend.position = "none") 
+
+## ancient and 1kG
+
+All_Joint_Meta_unrelated_ancient_1kG <- All_Joint_Meta_unrelated  %>%
+  filter(ML_BP_Mean > 0 | Data_Set == "G1k") %>%
+  filter(clusterF3D_broad %notin% c("SWA","Oceania"))
+
+n_bootstrap = 100
+for(i in 1:n_bootstrap){
+  print(paste0("Bootstrap: ",i))
+  Pop_bed_names = c()
+  for(pop_ in unique(All_Joint_Meta_unrelated_ancient_1kG[[cluster_used]])){
+    
+    #print(pop_)
+    pop_ind <-  sample(All_Joint_Meta_unrelated_ancient_1kG$sample_name[All_Joint_Meta_unrelated_ancient_1kG[[cluster_used]] == pop_],1,F)
+    NEA_Overlap_data = All_rle %>% filter(sample %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
+      inner_join(.,All_Joint_Meta_unrelated_ancient_1kG[,c("sample_name",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
+      filter(sample == pop_ind) %>% mutate(start_pos = pos,end_pos = pos_end) %>% 
+      mutate(pos_len = end_pos - start_pos) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
+      mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,start_pos,end_pos)
+    
+    pop_ = gsub("&","_",pop_)
+    
+    write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$id),file =paste("Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,"_ancient_and_1kG.bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
+    Pop_bed_names = c(Pop_bed_names,paste("Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,"_ancient_and_1kG.bed",sep=""))
+    
+  }
+  
+  system(paste("bedtools multiinter -i ",paste(Pop_bed_names, collapse=' ',sep = " ")," > Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_ancient_and_1kG.bed",sep=""))
+  
+  system(paste0("bedtools subtract -a Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_ancient_and_1kG.bed -b AA_Mask_joint.bed  > Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",i,"_ancient_and_1kG.bed
+  "))
+  system(paste0("rm  Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_ancient_and_1kG.bed"))
+}
+
+
+Single_sample_overlap_ancient_and_1kG <- Summaries_single_sample_unique_frags_fn(file_path_prefix = "Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",
+                                                                                 file_path_sufix = "_ancient_and_1kG.bed",Meta_data = All_Joint_Meta_unrelated_ancient_1kG)
+
+Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap <- Single_sample_overlap_ancient_and_1kG[[1]]
+Single_Sample_Pop_Bootstrap_unique <- Single_sample_overlap_ancient_and_1kG[[2]]
+
+write.table(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap,
+            file = paste0(folder_path_save,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_all_pops_ancient_and_1kG.txt"),quote = F,row.names = F,sep="\t")
+write.csv(Single_Sample_Pop_Bootstrap_unique,
+          file = paste0(folder_path_save,"Single_Sample_Pop_Bootstrap_unique_all_pops_ancient_and_1kG.csv"),quote = F,row.names = F)
+
+Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancient_and_1kG <- read.csv(paste0(folder_path_save,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_all_pops_ancient_and_1kG.txt"),sep="\t")
+
+pairwise.t.test_res <- pairwise.t.test(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancient_and_1kG$Amount_ancestry_in_Mb[Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancient_and_1kG$n_overlaps==1], 
+                                       Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancient_and_1kG$combination_names[Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancient_and_1kG$n_overlaps==1])
+
+pairwise.t.test_res_pvals <- Reshape_pairwise.t.test_PopClust_fn(pairwise.t.test_res,n_row = 10)
+
+write.csv(pairwise.t.test_res_pvals,paste0(folder_path_save,"Pairwise_t_test_for_unique_segment_ancient_1KG.csv"),quote = F,row.names = T)
+
+
+
+Single_Sample_Pop_Bootstrap_unique_ancient_and_1kG <- read.csv(paste0(folder_path_save,"Single_Sample_Pop_Bootstrap_unique_all_pops_ancient_and_1kG.csv"))  %>%
+  mutate(Data_Combination = "ancient + 1kG")
+
+P_Single_Unique_segments_with_bootstrap_ancient_and_1kG <- ggplot(Single_Sample_Pop_Bootstrap_unique_ancient_and_1kG, aes(x = fct_reorder(plot_lable, -mean_amount), y = mean_amount)) +
+  geom_col() +
+  geom_errorbar(aes(ymin=mean_amount-sd_amount, ymax=mean_amount+sd_amount), width=.2) +
+  ylab("Length in Mb") +
+  xlab("") +
+  THEME +
+  theme(axis.text = element_text(size = 8),
+        axis.text.x = element_text(size=10, face="bold", color = "black",angle = 90,hjust=1),
+        axis.title.x = element_text(size=12, face="bold", color = "black"),
+        legend.position = "none") 
+
+## plot together
+
+Single_Sample_Pop_Bootstrap_unique_ancient_and_PD_combinations <- rbind(Single_Sample_Pop_Bootstrap_unique,
+                                                                        Single_Sample_Pop_Bootstrap_unique_ancient_and_SGDP,
+                                                                        Single_Sample_Pop_Bootstrap_unique_ancient_and_1kG) %>%
+  mutate(Pop_lables = factor(Pop, levels=c("EarlyOoA","preLGM-WEurHG","AncientEAS","Oceania","ANS","EAS",
+                                           "SA","Siberia&Americas","SWA","WEur","postLGM-WEurHG","ANE","Satsurblia","Yamnaya")),
+         Data_Combination2 = factor(Data_Combination, levels=c("ancient + 1kG + SGDP","ancient + SGDP","ancient + 1kG")))
+
+
+
+P_Single_Sample_Pop_Bootstrap_unique_ancient_and_PD <- ggplot(Single_Sample_Pop_Bootstrap_unique_ancient_and_PD_combinations, 
+                                                              aes(x = Pop_lables, y = mean_amount,fill=Data_Combination2)) +
+  geom_bar(stat="identity", position=position_dodge()) +
+  geom_errorbar(aes(ymin=mean_amount-sd_amount, ymax=mean_amount+sd_amount), width=.2,position=position_dodge(.9)) +
+  ylab("Length in Mb") +
+  xlab("") +
+  THEME +
+  labs(fill="Data set combination") +
+  theme(axis.text = element_text(size = 8),
+        axis.text.x = element_text(size=10, face="bold", color = "black",angle = 90,hjust=1),
+        axis.title.x = element_text(size=12, face="bold", color = "black"),
+        legend.position = "bottom") 
+
+## only 1kG
+
+All_Joint_Meta_unrelated_PD_1kG <- All_Joint_Meta_unrelated  %>%
+  filter(ML_BP_Mean == 0,Data_Set == "G1k")
+
+n_bootstrap = 100
+for(i in 1:n_bootstrap){
+  print(paste0("Bootstrap: ",i))
+  Pop_bed_names_PD = c()
+  for(pop_ in unique(All_Joint_Meta_unrelated_PD_1kG[[cluster_used]])){
+    
+    #print(pop_)
+    pop_ind <-  sample(All_Joint_Meta_unrelated_PD_1kG$sample_name[All_Joint_Meta_unrelated_PD_1kG[[cluster_used]] == pop_],1,F)
+    NEA_Overlap_data = All_rle %>% filter(sample %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
+      inner_join(.,All_Joint_Meta_unrelated_PD_1kG[,c("sample_name",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
+      filter(sample == pop_ind) %>% mutate(start_pos = pos,end_pos = pos_end) %>% 
+      mutate(pos_len = end_pos - start_pos) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
+      mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,start_pos,end_pos)
+    
+    pop_ = gsub("&","_",pop_)
+    
+    write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$id),file =paste("Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,"_only_1kG.bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
+    Pop_bed_names_PD = c(Pop_bed_names_PD,paste("Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,"_only_1kG.bed",sep=""))
+  }
+  
+  system(paste("bedtools multiinter -i ",paste(Pop_bed_names_PD, collapse=' ',sep = " ")," > Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_only_1kG.bed",sep=""))
+  
+  system(paste0("bedtools subtract -a Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_only_1kG.bed -b AA_Mask_joint.bed  > Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",i,"_only_1kG.bed
+    "))
+  system(paste0("rm  Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_only_1kG.bed"))
+}
+
+Single_sample_overlap_PD_1kG_pops <- Summaries_single_sample_unique_frags_fn(file_path_prefix = "Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",
+                                                                             file_path_sufix = "_only_1kG.bed",Meta_data =  All_Joint_Meta_unrelated_PD_1kG)
+Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_1kG <- Single_sample_overlap_PD_1kG_pops[[1]]
+Single_Sample_Pop_Bootstrap_unique_1kG <- Single_sample_overlap_PD_1kG_pops[[2]]
+
+write.table(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_1kG,
+            file = paste0(folder_path_save,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_PD_pops_1kG.csv"),quote = F,row.names = F,sep="\t")
+write.csv(Single_Sample_Pop_Bootstrap_unique_1kG,
+          file = paste0(folder_path_save,"Single_Sample_Pop_Bootstrap_unique_PD_pops_1kG.csv"),quote = F,row.names = F)
+
+Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_1kG <- read.table(paste0(folder_path_save,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_PD_pops_1kG.csv"),sep="\t",header=T)
+
+pairwise.t.test_res <- pairwise.t.test(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_1kG$Amount_ancestry_in_Mb[Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_1kG$n_overlaps==1], Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_1kG$combination_names[Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_1kG$n_overlaps==1])
+
+pairwise.t.test_res_pvals <- Reshape_pairwise.t.test_PopClust_fn(pairwise.t.test_res,n_row = 2,row1 = "EAS","WEur")
+
+write.csv(pairwise.t.test_res_pvals,paste0(folder_path_save,"Pairwise_t_test_for_unique_segment_only_1KG.csv"),quote = F,row.names = T)
+
+
+Single_Sample_Pop_Bootstrap_unique_1kG <- read.csv(paste0(folder_path_save,"Single_Sample_Pop_Bootstrap_unique_PD_pops_1kG.csv"))
+
+P_Single_Unique_segments_with_bootstrap_PD_1kG <- ggplot(Single_Sample_Pop_Bootstrap_unique_1kG, aes(x = fct_reorder(plot_lable, -mean_amount), y = mean_amount)) +
+  geom_col() +
+  geom_errorbar(aes(ymin=mean_amount-sd_amount, ymax=mean_amount+sd_amount), width=.2) +
+  ylab("Length in Mb") +
+  xlab("") +
+  THEME +
+  theme(axis.text = element_text(size = 8),
+        axis.text.x = element_text(size=10, face="bold", color = "black",angle = 90,hjust=1),
+        axis.title.x = element_text(size=12, face="bold", color = "black"),
+        legend.position = "none") 
+
+ggsave(paste0(folder_path_save,"P_Single_Unique_segments_with_bootstrap_pd_SGDP_pops_with_1kG.png"),P_Single_Unique_segments_with_bootstrap_PD_1kG,device = "png",width = 8,height = 9)
+
+
+## only SGDP
+
+All_Joint_Meta_unrelated_PD_SGDP <- All_Joint_Meta_unrelated  %>%
+  filter(ML_BP_Mean == 0,Data_Set == "SGDP")
+
+n_bootstrap = 100
+for(i in 1:n_bootstrap){
+  print(paste0("Bootstrap: ",i))
+  Pop_bed_names_PD = c()
+  for(pop_ in unique(All_Joint_Meta_unrelated_PD_SGDP[[cluster_used]])){
+    
+    #print(pop_)
+    pop_ind <-  sample(All_Joint_Meta_unrelated_PD_SGDP$sample_name[All_Joint_Meta_unrelated_PD_SGDP[[cluster_used]] == pop_],1,F)
+    NEA_Overlap_data = All_rle %>% filter(sample %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
+      inner_join(.,All_Joint_Meta_unrelated_PD_SGDP[,c("sample_name",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
+      filter(sample == pop_ind) %>% mutate(start_pos = pos,end_pos = pos_end) %>% 
+      mutate(pos_len = end_pos - start_pos) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
+      mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,start_pos,end_pos)
+    
+    pop_ = gsub("&","_",pop_)
+    
+    write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$id),file =paste("Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,"_only_SGDP.bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
+    Pop_bed_names_PD = c(Pop_bed_names_PD,paste("Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,"_only_SGDP.bed",sep=""))
+  }
+  
+  system(paste("bedtools multiinter -i ",paste(Pop_bed_names_PD, collapse=' ',sep = " ")," > Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_only_SGDP.bed",sep=""))
+  
+  system(paste0("bedtools subtract -a Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_only_SGDP.bed -b AA_Mask_joint.bed  > Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",i,"_only_SGDP.bed
+    "))
+  system(paste0("rm  Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_only_SGDP.bed"))
+}
+
+Single_sample_overlap_PD_SGDP_pops <- Summaries_single_sample_unique_frags_fn(file_path_prefix = "~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",
+                                                                              file_path_sufix = "_only_SGDP.bed",Meta_data =  All_Joint_Meta_unrelated_PD_SGDP)
+Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_SGDP <- Single_sample_overlap_PD_SGDP_pops[[1]]
+Single_Sample_Pop_Bootstrap_unique_SGDP <- Single_sample_overlap_PD_SGDP_pops[[2]]
+
+write.table(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_SGDP,
+            file = paste0(folder_path_save,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_PD_pops_SGDP.csv"),quote = F,row.names = F,sep="\t")
+write.csv(Single_Sample_Pop_Bootstrap_unique_SGDP,
+          file = paste0(folder_path_save,"Single_Sample_Pop_Bootstrap_unique_PD_pops_SGDP.csv"),quote = F,row.names = F)
+
+Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_SGDP <- read.table(paste0(folder_path_save,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_PD_pops_SGDP.csv"),sep="\t",header=T)
+
+pairwise.t.test_res <- pairwise.t.test(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_SGDP$Amount_ancestry_in_Mb[Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_SGDP$n_overlaps==1], Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_SGDP$combination_names[Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_SGDP$n_overlaps==1])
+
+pairwise.t.test_res_pvals <- Reshape_pairwise.t.test_PopClust_fn(pairwise.t.test_res,n_row = 5,row1 = "EAS","WEur")
+
+write.csv(pairwise.t.test_res_pvals,paste0(folder_path_save,"Pairwise_t_test_for_unique_segment_only_SGDP.csv"),quote = F,row.names = T)
+
+Single_Sample_Pop_Bootstrap_unique_SGDP <- read.csv(paste0(folder_path_save,"Single_Sample_Pop_Bootstrap_unique_PD_pops_SGDP.csv"))
+
+P_Single_Unique_segments_with_bootstrap_PD_SGDP <- ggplot(Single_Sample_Pop_Bootstrap_unique_SGDP, aes(x = fct_reorder(plot_lable, -mean_amount), y = mean_amount)) +
+  geom_col() +
+  geom_errorbar(aes(ymin=mean_amount-sd_amount, ymax=mean_amount+sd_amount), width=.2) +
+  ylab("Length in Mb") +
+  xlab("") +
+  THEME +
+  theme(axis.text = element_text(size = 8),
+        axis.text.x = element_text(size=10, face="bold", color = "black",angle = 90,hjust=1),
+        axis.title.x = element_text(size=12, face="bold", color = "black"),
+        legend.position = "none") 
+
+ggsave(paste0(folder_path_save,"P_Single_Unique_segments_with_bootstrap_pd_SGDP_pops_with_1kG.png"),P_Single_Unique_segments_with_bootstrap_PD_SGDP,device = "png",width = 8,height = 9)
+
+
+## ancient only 
+
+All_Joint_Meta_unrelated_ancient_only <- All_Joint_Meta_unrelated %>% 
+  filter(ML_BP_Mean > 0)
+
+n_bootstrap = 100
+for(i in 1:n_bootstrap){
+  print(paste0("Bootstrap: ",i))
+  Pop_bed_names_ancient = c()
+  for(pop_ in unique(All_Joint_Meta_unrelated_ancient_only[[cluster_used]])){
+    
+    #print(pop_)
+    pop_ind <-  sample(All_Joint_Meta_unrelated_ancient_only$sample_name[All_Joint_Meta_unrelated_ancient_only[[cluster_used]] == pop_],1,F)
+    NEA_Overlap_data = All_rle %>% filter(sample %notin% c("AfanasievoSon1","AfanasievoSon2")) %>%
+      inner_join(.,All_Joint_Meta_unrelated_ancient_only[,c("sample_name",cluster_used,"pop","ML_BP_Mean")],by=c("sample"="sample_name")) %>%
+      filter(sample == pop_ind) %>% mutate(start_pos = pos,end_pos = pos_end) %>% 
+      mutate(pos_len = end_pos - start_pos) %>% mutate(chrom = ifelse(chrom == "X","23",chrom)) %>% 
+      mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,start_pos,end_pos)
+    
+    pop_ = gsub("&","_",pop_)
+    
+    write.table(data.frame(chrom=NEA_Overlap_data$chrom,start=NEA_Overlap_data$start_pos,end=NEA_Overlap_data$end_pos,name=NEA_Overlap_data$id),file =paste("Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,"_ancient_only.bed",sep=""),quote = F,row.names = F,col.names = F,sep = '\t')
+    Pop_bed_names_ancient = c(Pop_bed_names_ancient,paste("Unique_Segments_bootstrap/Single_sample_from_",pop_,"_NEA_ancestry_unmasked_bootstrap",i,"_ancient_only.bed",sep=""))
+  }
+  
+  system(paste("bedtools multiinter -i ",paste(Pop_bed_names_ancient, collapse=' ',sep = " ")," > Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_ancient_only.bed",sep=""))
+  
+  system(paste0("bedtools subtract -a Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_ancient_only.bed -b AA_Mask_joint.bed  > Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",i,"_ancient_only.bed
+    "))
+  system(paste0("rm  Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_unmasked_bootstrap",i,"_ancient_only.bed"))
+}
+
+Single_sample_overlap_ancients_only <- Summaries_single_sample_unique_frags_fn(file_path_prefix = "~/EMH_Introgression_Project/Introgression_Detection/Analysis/Unique_NEA_Segments/Unique_Segments_bootstrap/Single_sample_from_Pop_NEA_ancestry_masked_bootstrap",
+                                                                               file_path_sufix = "_ancient_only.bed",Meta_data =  All_Joint_Meta_unrelated_ancient_only)
+
+Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancients_only <- Single_sample_overlap_ancients_only[[1]]
+Single_Sample_Pop_Bootstrap_unique_ancients_only <- Single_sample_overlap_ancients_only[[2]]
+
+write.table(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancients_only,
+            file = paste0(folder_path_save,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancient_only_pops_with_1kG.csv"),quote = F,row.names = F,sep="\t")
+write.csv(Single_Sample_Pop_Bootstrap_unique_ancients_only,
+          file = paste0(folder_path_save,"Single_Sample_Pop_Bootstrap_unique_ancient_only_pops_with_1kG.csv"),quote = F,row.names = F)
+
+Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancients_only <- read.table(paste0(folder_path_save,"Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancient_only_pops_with_1kG.csv"),header = T,sep="\t")
+
+pairwise.t.test_res <- pairwise.t.test(Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancients_only$Amount_ancestry_in_Mb[Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancients_only$n_overlaps==1], Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancients_only$combination_names[Single_Sample_Pop_masked_multiinter_all_combinations_bootstrap_ancients_only$n_overlaps==1])
+
+pairwise.t.test_res_pvals <- Reshape_pairwise.t.test_PopClust_fn(pairwise.t.test_res,n_row = 11)
+
+write.csv(pairwise.t.test_res_pvals,paste0(folder_path_save,"Pairwise_t_test_for_unique_segment_only_ancient.csv"),quote = F,row.names = T)
+
+Single_Sample_Pop_Bootstrap_unique_ancients_only <- read.csv(paste0(folder_path_save,"Single_Sample_Pop_Bootstrap_unique_ancient_only_pops_with_1kG.csv"))
+
+P_Single_Unique_segments_with_bootstrap_ancient_only <- ggplot(Single_Sample_Pop_Bootstrap_unique_ancients_only, aes(x = fct_reorder(plot_lable, -mean_amount), y = mean_amount)) +
+  geom_col() +
+  geom_errorbar(aes(ymin=mean_amount-sd_amount, ymax=mean_amount+sd_amount), width=.2) +
+  ylab("Length in Mb") +
+  xlab("") +
+  THEME +
+  theme(axis.text = element_text(size = 8),
+        axis.text.x = element_text(size=10, face="bold", color = "black",angle = 90,hjust=1),
+        axis.title.x = element_text(size=12, face="bold", color = "black"),
+        legend.position = "none") 
+#scale_fill_manual(name = "Genetic Clusters",labels = cluster_color[[cluster_used]],values = cluster_color$cluster_color) 
+
+ggsave(paste0(folder_path_save,"P_Single_Unique_segments_with_bootstrap_ancient_only_pops_with_1kG.png"),P_Single_Unique_segments_with_bootstrap_ancient_only,device = "png",width = 8,height = 9)
+
+### plot All ###
+
+
+P_Single_Sample_unique_segs_All <- ggpubr::ggarrange(P_Single_Sample_Pop_Bootstrap_unique_ancient_and_PD,
+                                                     ggpubr::ggarrange(P_Single_Unique_segments_with_bootstrap_PD_1kG,P_Single_Unique_segments_with_bootstrap_PD_SGDP,P_Single_Unique_segments_with_bootstrap_ancient_only,ncol = 3,labels = c("B","C","D")),
+                                                     nrow = 2,labels = c("A",""))
+
+ggsave(paste0(folder_path_save,"P_Single_Sample_unique_segs_All.png"),P_Single_Sample_unique_segs_All,device = "png",width = 8,height = 9)
+
+### data table for all
+
+Single_Sample_Pop_Bootstrap_unique_SGDP$Data_Combination <- "SGDP"
+Single_Sample_Pop_Bootstrap_unique_1kG$Data_Combination <- "1kG"
+Single_Sample_Pop_Bootstrap_unique_ancients_only$Data_Combination <- "ancient"
+
+All_single_sample_unique_table <- rbind(Single_Sample_Pop_Bootstrap_unique_ancient_and_SGDP,
+                                        Single_Sample_Pop_Bootstrap_unique,
+                                        Single_Sample_Pop_Bootstrap_unique_ancient_and_1kG,
+                                        Single_Sample_Pop_Bootstrap_unique_SGDP,
+                                        Single_Sample_Pop_Bootstrap_unique_1kG,
+                                        Single_Sample_Pop_Bootstrap_unique_ancients_only)
+
+write.table(All_single_sample_unique_table,
+            paste0(folder_path_save,"All_Combined_Single_Sample_unique_all_revisions.csv"),quote = F,row.names = F,sep = "\t")
+```
+
+
 
 ## Segment Correlation vs. F3
 

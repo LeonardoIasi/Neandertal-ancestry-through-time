@@ -1,0 +1,83 @@
+sim:
+    __default__ :
+        seq_len : 50e6
+        rec : null
+        mut_rate : 2e-8
+        recomb_rate : 1e-8
+
+demography:
+    __default__ :
+        N_target : 2
+        s_target : [45]
+        p_target : ['EUR']
+        N_Hafr : 100
+        N_Heur : 20
+        N_Hasn : 20
+        N_cont : 20
+        generation_time : 25
+        admixture_proportion : 0.03
+
+
+seq_sim :
+    __default__ :
+        fixed_der : ["NEA"]
+        fixed_anc : ["AFR"]
+        polymorphic: []
+        rec_obs : null
+
+admixfrog:
+    __default__ :
+        min_read_len : 35
+        read_bin_len : 15
+        bin_size: 5000
+        state_ids: ["AFR", "NEA"]
+        cont_id : ['AFR']
+        run_penalty : 0.25
+
+rle:
+    __default__ :
+        run_penalty : .25
+
+series:
+    sim:
+        SBasic:
+            seq_len : 50e6
+            rec : null
+        SBasicSmall:
+            seq_len : 10e6
+            rec : null
+        SBasic_emp_rec:
+            seq_len : 50e6
+            rec : "AA_Map"
+    demography:
+        Ten_PD: #scenario a1
+            N_target: 20
+            s_target : [0,0,0,0,0,0,0,0,0,0]
+            p_target : ['EUR','EUR','EUR','EUR','EUR','EUR','EUR','EUR','EUR','EUR']
+    seq_sim:
+        Fixed_asc:
+          fixed_der : ["NEA"]
+          fixed_anc : ["AFR"]
+
+    admixfrog:
+        All_Archaics:
+            state_ids: ["AFR", "NEA", "DEN"]
+
+    rle:
+        R2:
+            run_penalty : .2
+
+
+set:
+    TestPD:
+        sim: SBasic
+        demography: Ten_PD
+        seq_sim: Fixed_asc
+        admixfrog: All_Archaics
+        rle: R2
+    TestPDwithDenintro:
+        sim: SBasic
+        demography: Ten_PD
+        seq_sim: Fixed_asc
+        admixfrog: All_Archaics
+        rle: R2
