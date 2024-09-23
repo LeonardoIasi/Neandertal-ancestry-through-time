@@ -1878,3 +1878,513 @@ sum(Increase_regions_new_stringent$n_genes)
 Selected_regions_lit_overlap_stringent %>% filter(pattern == "decrease") %>% nrow()
 Selected_regions_lit_overlap_stringent %>% filter(pattern == "decrease") %>% summarize(sum(n_genes))
 ```
+
+## Go enrichment test
+
+```{r eval=T,echo=F,results='hide'}
+library(parallel)
+library("GO.db")
+library(biomaRt)
+
+# get controle gene set from ENSEMBL hg19
+Gene_map <- read.csv("gencode.v19.annotation.gtf",sep="\t",header=F,skip = 5) 
+
+Gene_map <- Gene_map %>% filter(V1 != 23,V2 == "HAVANA",V3 == "gene")
+
+grep_gene_name <- function(x) { x[grep('gene_name', x)] }
+
+grep_gene_id <- function(x) { x[grep('gene_id', x)] }
+
+Gene_map$gene_id  <- gsub("gene_id ","",do.call('rbind',lapply(str_split(Gene_map$V9,";"), grep_gene_id)))[,1]
+
+Gene_map$gene_name <- gsub("gene_name ","",do.call('rbind',lapply(str_split(Gene_map$V9,";"), grep_gene_name)))[,1]
+
+Gene_map <- Gene_map %>% 
+  mutate(chrom = gsub("chr","",V1),gene_length = V5 - V4, gene_center = round(((V5 - V4)/2) + V4)) %>%
+  mutate(start_50kb = gene_center - 50000,
+         end_50kb = gene_center + 50000,
+         start_200kb = gene_center - 200000,
+         end_200kb = gene_center + 200000) %>%
+  mutate(start_50kb = ifelse(start_50kb < 0,1,start_50kb),
+         start_200kb = ifelse(start_200kb < 0,1,start_200kb),
+         gene_name = gsub(" ","",gene_name))
+
+gene_map_genes <- data.frame(chrom=Gene_map$chrom,start=Gene_map$V4,end=Gene_map$V5,id=Gene_map$gene_id,name=Gene_map$gene_name)
+
+write.table(gene_map_genes,
+            file = "Gene_control_list.bed",
+            quote = F,sep = "\t",row.names = F,col.names = F)
+
+## filter for mappable genes
+
+system("bedtools intersect -a Gene_control_list.bed -b AAAPUX_callable_regions_joint_windows20000.bed -f 1.0   > Gene_control_list_callable.bed")
+
+Gene_map_callable_list <- read.table("Gene_control_list_callable.bed")
+
+Gene_map_callable <- Gene_map %>% filter(gene_name %in% Gene_map_callable_list$V5)
+
+gene_map_genes_50kb_flanking <- data.frame(chrom=Gene_map_callable$chrom,start=Gene_map_callable$start_50kb,end=Gene_map_callable$end_50kb,id=Gene_map_callable$gene_id,name=Gene_map_callable$gene_name)
+
+write.table(gene_map_genes_50kb_flanking,
+            file = "Gene_control_list_callable_50kb.bed",
+            quote = F,sep = "\t",row.names = F,col.names = F)
+
+## get average B scores in a +/- 50 kb window
+
+system("bedtools intersect -a Gene_control_list_callable_50kb.bed -b bstat_hg19_with_X_alt.txt -wo > Gene_control_list_callable_50kb_BScore.bed")
+
+Gene_map_callable_Bscores <- read.table("Gene_control_list_callable_50kb_BScore.bed")
+
+Gene_map_callable_features <- Gene_map_callable_Bscores %>% group_by(V1,V2,V3,V5) %>%
+  summarize(BScore = sum(V9 * V10)/sum(V10)) %>% dplyr::select(V5,BScore) %>% left_join(Gene_map_callable,.,by=c("gene_name"="V5"))
+
+## get average rec rate in a +/- 200 kb window
+
+interpolated_starts <- c()
+interpolated_ends <- c()
+for (chr in unique(Gene_map_callable_features$chrom)) {
+  print(chr)
+  
+  positions_to_interpolate = Gene_map_callable_features %>% filter(chrom == chr)
+  map_x <- read.table(paste0("maps_b37/maps_chr.",chr),header = T) %>%
+    mutate(pos_len = lead(Physical_Pos) - Physical_Pos, map_len = lead(Shared_Map) - Shared_Map) %>% drop_na() %>% mutate(map_rate = map_len / pos_len)
+  
+  # Interpolate genetic distances for the current chromosome
+  interpolated_start <- as.data.frame(approx(map_x$Physical_Pos, map_x$Shared_Map, 
+                                             xout = positions_to_interpolate$start_200kb))
+  
+  interpolated_end <- as.data.frame(approx(map_x$Physical_Pos, map_x$Shared_Map, 
+                                           xout = positions_to_interpolate$end_200kb))
+  
+  
+  interpolated_starts <- c(interpolated_starts,interpolated_start$y)
+  interpolated_ends <- c(interpolated_ends,interpolated_end$y)
+}
+
+Gene_map_callable_features <- Gene_map_callable_features %>% mutate(map_start = interpolated_starts,
+                                                                    map_end = interpolated_ends) %>%
+  mutate(rec_rate = (map_end - map_start) / 400000)
+
+
+## ref SNP density 
+
+system("bedtools intersect -a Gene_control_list_callable_50kb.bed -b archaicadmixtureAPUX.bed -wo > Gene_control_list_callable_SNP_dens_50kb.bed")
+
+Gene_map_SNP_dens <- read.table("Gene_control_list_callable_SNP_dens_50kb.bed")
+
+Gene_map_callable_features <- Gene_map_SNP_dens %>% group_by(V1,V2,V3,V5) %>%
+  summarize(n_SNPs = n()) %>% dplyr::select(V5,n_SNPs) %>% left_join(Gene_map_callable_features,.,by=c("gene_name"="V5"))
+
+## clean up table
+
+Gene_map_callable_features <- Gene_map_callable_features %>% 
+  dplyr::select(chrom,V2,V3,V7,V9,gene_id,gene_name,gene_length,gene_center,BScore,rec_rate,n_SNPs) %>%
+  dplyr::rename(start = V2,end = V3,strand = V7,annotation = V9) %>% drop_na()
+
+
+## do quartiles
+
+Gene_map_callable_features$BScore_bins <- with(Gene_map_callable_features, cut(BScore, breaks = quantile(BScore, probs = 0:4/4,na.rm =T), include.lowest = TRUE, labels = FALSE))
+
+Gene_map_callable_features$rec_rate_bins <- with(Gene_map_callable_features, cut(rec_rate, breaks = quantile(rec_rate, probs = 0:4/4,na.rm =T), include.lowest = TRUE, labels = FALSE))
+
+Gene_map_callable_features$gene_length_bins <- with(Gene_map_callable_features, cut(gene_length, breaks = quantile(gene_length, probs = 0:4/4,na.rm =T), include.lowest = TRUE, labels = FALSE))
+
+Gene_map_callable_features$n_SNPs_bins <- with(Gene_map_callable_features, cut(n_SNPs, breaks = quantile(n_SNPs, probs = 0:4/4,na.rm =T), include.lowest = TRUE, labels = FALSE))
+
+### archaic outliers (table S26)
+
+found_outliers <- read.csv("all_found_regions_table.csv",skip = 1)
+
+found_outliers <- separate_rows(found_outliers, Genes.annotated..GenCode..Havana.version., sep = ",") %>% 
+  dplyr::rename(status = Neandertal.introgressed.segment.frequency.over.time.using.EMH.and.PP.samples,gene_name = Genes.annotated..GenCode..Havana.version.) %>%
+  filter(status != "Regions of high frequency in ancient and low in present day (PD) samples") %>%
+  mutate(status = ifelse(status == "Regions of high frequency in both ancient and present-day (PD) samples","constant","increase"))
+
+Gene_map_callable_features <- left_join(Gene_map_callable_features,found_outliers[,c("status","gene_name")],by="gene_name")
+
+Gene_map_callable_features <- Gene_map_callable_features %>% mutate(status = ifelse(is.na(status),"controle",status))
+
+Gene_map_callable_features <- Gene_map_callable_features %>% mutate(gene_id_cleaned = sub("\\..*", "", gene_id) )
+
+write.csv(Gene_map_callable_features,"Gene_map_callable_features.csv",quote = F,row.names = F)
+
+
+### get haplotypes overlapping high frequency regions
+library(GenomicRanges)
+library(IRanges)
+
+found_outliers <- read.csv("all_found_regions_table.csv",skip = 1)
+
+found_outliers_constant <- found_outliers %>% filter(Neandertal.introgressed.segment.frequency.over.time.using.EMH.and.PP.samples == "Regions of high frequency in both ancient and present-day (PD) samples")
+
+found_outliers_increase <- found_outliers %>% filter(Neandertal.introgressed.segment.frequency.over.time.using.EMH.and.PP.samples == "Regions of low frequency in ancient and high in present day (PD) samples")
+
+write.table(data.frame(found_outliers_constant$chr,found_outliers_constant$Start_pos..bp.,found_outliers_constant$End_pos..bp.),
+            file = "found_outliers_constant.bed",
+            quote = F,sep = "\t",row.names = F,col.names = F)
+
+write.table(data.frame(found_outliers_increase$chr,found_outliers_increase$Start_pos..bp.,found_outliers_increase$End_pos..bp.),
+            file = "found_outliers_increase.bed",
+            quote = F,sep = "\t",row.names = F,col.names = F)
+
+found_outliers_constant_bed <- rtracklayer::import("found_outliers_constant.bed")
+
+found_outliers_increase_bed <- rtracklayer::import("found_outliers_increase.bed")
+
+
+### write bed files
+EMH_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean > 0]
+Present_Day_sample_list = Joint_Meta$sample_name[Joint_Meta$ML_BP_Mean == 0]
+
+rle_file = read.csv(paste0(path_to_dryad_downloaded_files,"/ALL_called_ancestry_segments.csv")) %>%
+  filter(genetic_map == !!genetic_map)
+
+rle_EMH = rle_file %>% filter(sample %in% EMH_sample_list) %>% 
+  filter(type == called_type,target == states,chrom %in% chrom_,map_len >= min_len_ancient, pos_len >= min_bp_len_ancient)
+
+rle_PD = rle_file %>% filter(sample %in% Present_Day_sample_list) %>% 
+  filter(type == called_type,target == states,chrom %in% chrom_,map_len >= min_len_present, pos_len >= min_bp_len_present) %>%
+  mutate(sample = gsub("-", "\\.", sample))
+
+EMH_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_EMH,type_ = called_type,target_ = states,chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_ancient,min_bp_len = min_bp_len_ancient,min_SNP = min_SNP)
+
+SGDP_file_names_NEA_state = write_bed_from_All_rle(rle_file = rle_PD,type_ = called_type,target_ = states,chrom_ = chrom_,path = paste0("Bed_files/",genetic_map,"/"),min_len = min_len_present,min_bp_len = min_bp_len_present,min_SNP = min_SNP)
+
+
+haplotype_files <- c(EMH_file_names_NEA_state,SGDP_file_names_NEA_state)
+
+### filter the set of haplotypes for overlaps
+
+filtered_haplotypes_constant_list <- list()  
+
+for(i in 1:length(haplotype_files)){
+  haplotype_files_bed <- rtracklayer::import(haplotype_files[i]) 
+  overlaps <- subsetByOverlaps(haplotype_files_bed, found_outliers_constant_bed)  
+  filtered_haplotypes_constant_list[[haplotype_files[i]]] <- overlaps  
+}
+
+filtered_haplotypes_increase_list <- list()  
+
+for(i in 1:length(haplotype_files)){
+  haplotype_files_bed <- rtracklayer::import(haplotype_files[i]) 
+  overlaps <- subsetByOverlaps(haplotype_files_bed, found_outliers_increase_bed)  
+  filtered_haplotypes_increase_list[[haplotype_files[i]]] <- overlaps  
+}
+
+### get N segs overlap ###
+
+write.table(data.frame(Gene_map_callable_features$chrom,Gene_map_callable_features$start,Gene_map_callable_features$end,Gene_map_callable_features$gene_id_cleaned),
+            "Gene_map_callable_features.bed",quote = F,row.names = F,col.names = F,sep = "\t")
+
+genes <- rtracklayer::import("Gene_map_callable_features.bed")
+
+overlap_haps <- function(haplotype_file, genes_modified=genes) {
+  haplotype <- haplotype_file
+  overlaps <- countOverlaps(genes_modified, haplotype)
+  return(overlaps)
+}
+
+overlaps_constant <- lapply(filtered_haplotypes_constant_list, overlap_haps)
+
+overlaps_increase <- lapply(filtered_haplotypes_increase_list, overlap_haps)
+
+Gene_map_callable_features$n_segments_overlap_constant <- rowSums(do.call('cbind',overlaps_constant))
+
+Gene_map_callable_features$n_segments_overlap_increase <- rowSums(do.call('cbind',overlaps_increase))
+
+### Go annotation of genes 
+
+ensembl <- useEnsembl(biomart = "ENSEMBL_MART_ENSEMBL",
+                      dataset = "hsapiens_gene_ensembl",
+                      host = 'grch37.ensembl.org')
+
+go_terms_candidates <- getBM(attributes = c('ensembl_gene_id', 'go_id', 'name_1006', 'definition_1006', 'namespace_1003'),
+                                      filters = 'ensembl_gene_id',
+                                      values = Gene_map_callable_features$gene_id_cleaned[Gene_map_callable_features$status != "controle"],
+                                      mart = ensembl)
+
+go_terms_candidates_cleaned <- go_terms_candidates %>% filter(go_id != "")
+
+
+go_terms_candidates_constant <- getBM(attributes = c('ensembl_gene_id', 'go_id', 'name_1006', 'definition_1006', 'namespace_1003'),
+                             filters = 'ensembl_gene_id',
+                             values = Gene_map_callable_features$gene_id_cleaned[Gene_map_callable_features$status == "constant"],
+                             mart = ensembl)
+
+go_terms_candidates_constant_cleaned <- go_terms_candidates_constant %>% filter(go_id != "")
+
+go_terms_candidates_increase <- getBM(attributes = c('ensembl_gene_id', 'go_id', 'name_1006', 'definition_1006', 'namespace_1003'),
+                                      filters = 'ensembl_gene_id',
+                                      values = Gene_map_callable_features$gene_id_cleaned[Gene_map_callable_features$status == "increase"],
+                                      mart = ensembl)
+
+go_terms_candidates_increase_cleaned <- go_terms_candidates_increase %>% filter(go_id != "")
+
+### get GO depth (execute on cluster!!!)
+
+go_id_list <- unique(go_terms_candidates_cleaned$go_id)
+
+write.table(go_id_list,"All_go_id_list.txt",quote = F,row.names = F,col.names = F)
+
+
+get_shortest_path <- function(go_id, path_length = 0) {
+  parent_terms <- as.list(GOBPPARENTS)[[go_id]]
+  
+  if (is.null(parent_terms)) {
+    return(path_length)
+  } else {
+    return(min(sapply(parent_terms, get_shortest_path, path_length = path_length + 1)))
+  }
+}
+
+no_cores <- 120
+
+go_id_vector <- read.table("All_go_id_list.txt")[,1]
+
+valid_go_ids <- go_id_vector[go_id_vector %in% keys(GO.db)]
+
+shortest_paths_to_root <- mclapply(valid_go_ids, get_shortest_path, mc.cores = no_cores)
+
+save(shortest_paths_to_root, file = "GO_term_depth_updated.Rdata")
+
+go_id_vector <- read.table("All_go_id_list.txt")[,1]
+
+valid_go_ids <- go_id_vector[go_id_vector %in% keys(GO.db)]
+
+load(file = "GO_term_depth_updated.Rdata")
+
+shortest_paths_to_root_vector <- unlist(shortest_paths_to_root)
+
+GO_depth <- data.frame(go_id = valid_go_ids, GO_depth = shortest_paths_to_root_vector)
+
+save(GO_depth, file = "GO_term_depth_updated_anno.Rdata")
+
+### load GO depth
+
+load("GO_term_depth_updated_anno.Rdata")
+
+
+### annotate and filter GO categories 
+
+get_GO_subset_fn <- function(go_terms_candidates_cleaned,GO_depth){
+  go_terms_candidates_cleaned_anno <- inner_join(go_terms_candidates_cleaned,GO_depth)
+  
+  go_terms_candidates_cleaned_filter <- go_terms_candidates_cleaned_anno %>% 
+    filter(GO_depth <= 7) %>% .$name_1006
+  
+  go_terms_candidates_cleaned_filtered <- go_terms_candidates_cleaned_anno %>% filter(name_1006 %in% go_terms_candidates_cleaned_filter)
+  
+  go_terms_controle <- getBM(attributes = c('ensembl_gene_id', 'go_id', 'name_1006', 'definition_1006', 'namespace_1003'),
+                             filters = 'ensembl_gene_id',
+                             values = Gene_map_callable_features$gene_id_cleaned[Gene_map_callable_features$status == "controle"],
+                             mart = ensembl)
+  
+  go_terms_controle_cleaned <- go_terms_controle %>% filter(go_id != "")
+  
+  go_terms_controle_cleaned_filtered <- go_terms_controle_cleaned %>% filter(name_1006 %in% go_terms_candidates_cleaned_filter) %>%
+    inner_join(.,GO_depth)
+  
+  go_terms_candidates_cleaned_filter_final <- rbind(go_terms_candidates_cleaned_filtered,go_terms_controle_cleaned_filtered) %>% 
+    group_by(name_1006) %>% group_by(name_1006) %>% summarize(n_genes = n()) %>%
+    filter(name_1006 != "",n_genes >= 4) %>% .$name_1006 %>% unique(.)
+  
+  go_terms_joint_cleaned_filtered <- rbind(go_terms_candidates_cleaned_filtered,go_terms_controle_cleaned_filtered) %>%
+    filter(name_1006 %in% go_terms_candidates_cleaned_filter_final)
+  
+  Gene_map_callable_features_GO <- left_join(Gene_map_callable_features,go_terms_joint_cleaned_filtered,by=c("gene_id_cleaned"="ensembl_gene_id")) %>%
+    dplyr::rename(go_name = name_1006) %>% mutate(go_name = ifelse(is.na(go_name),"other",go_name))
+  
+  return(list(go_terms_candidates_cleaned_filter_final,Gene_map_callable_features_GO))
+}
+
+GO_tables_constant <- get_GO_subset_fn(go_terms_candidates_constant_cleaned,GO_depth)
+go_terms_candidates_cleaned_filter_final_constant <- GO_tables_constant[[1]]
+Gene_map_callable_features_GO_constant <- GO_tables_constant[[2]] %>% dplyr::select(!n_segments_overlap_increase) %>% 
+  dplyr::rename(n_segments_overlap = n_segments_overlap_constant)
+save(go_terms_candidates_cleaned_filter_final_constant,file = "go_terms_candidates_cleaned_filter_list_constant.RData")
+save(Gene_map_callable_features_GO_constant,file = "Gene_map_callable_features_GO_anno_constant.RData")
+
+GO_tables_increase <- get_GO_subset_fn(go_terms_candidates_increase_cleaned,GO_depth)
+go_terms_candidates_cleaned_filter_final_increase <- GO_tables_increase[[1]]
+Gene_map_callable_features_GO_increase <- GO_tables_increase[[2]]%>% dplyr::select(!n_segments_overlap_constant) %>% 
+  dplyr::rename(n_segments_overlap = n_segments_overlap_increase)
+save(go_terms_candidates_cleaned_filter_final_increase,file = "go_terms_candidates_cleaned_filter_list_increase.RData")
+save(Gene_map_callable_features_GO_increase,file = "Gene_map_callable_features_GO_anno_increase.RData")
+
+### do the resampling of candidate genes
+
+## for constant
+library(doParallel)
+library(foreach)
+library(dplyr)
+library(tidyverse)
+
+load("Gene_map_callable_features_GO_anno_constant.RData")
+
+load("go_terms_candidates_cleaned_filter_list_constant.RData")
+
+
+find_control_fn <- function(Candidate_genes_df,Controle_genes_df){
+  find_matching_genes <- function(candidate_row,controle_genes_df) {
+    matching_genes <- subset(controle_genes_df, gene_length_bins == candidate_row$gene_length_bins &
+                               BScore_bins == candidate_row$BScore_bins &
+                               n_SNPs_bins == candidate_row$n_SNPs_bins &
+                               rec_rate_bins == candidate_row$rec_rate_bins)
+    return(data.frame(controle_gene_id = matching_genes$gene_id_cleaned,controle_n_segments_overlap = matching_genes$n_segments_overlap)) 
+  }
+  
+  matching_genes <- list()
+  
+  
+  for(i in 1:length(Candidate_genes_df$chrom)) {
+    x <- find_matching_genes(candidate_row = Candidate_genes_df[i, ],controle_genes_df = Controle_genes_df) 
+    if(nrow(x) > 0){
+      matching_genes[[i]] <- x %>% mutate(candidate_gene_id = Candidate_genes_df[i, "gene_id_cleaned"],
+                                          candidate_n_segments_overlap = Candidate_genes_df[i, "n_segments_overlap"])
+    }
+    
+  }
+  
+  Matching_candidate_controle <- do.call('rbind',matching_genes)
+  return(Matching_candidate_controle)
+}
+
+no_cores <- 120
+
+cl <- makeCluster(no_cores)
+registerDoParallel(cl)
+
+GO_set_p_values_constant <- foreach(i = 1:length(go_terms_candidates_cleaned_filter_final_constant), .combine = 'rbind') %dopar% {
+  
+  library(dplyr)
+  library(tidyverse)
+  x <- Gene_map_callable_features_GO_constant %>% filter(go_name == go_terms_candidates_cleaned_filter_final_constant[i])
+  not_x <- Gene_map_callable_features_GO_constant %>% filter(go_name != go_terms_candidates_cleaned_filter_final_constant[i])
+  
+  controle_x <- find_control_fn(Candidate_genes_df = x, Controle_genes_df = not_x)
+  
+  filtered_candidates <- controle_x %>% group_by(candidate_gene_id) %>% 
+    summarize(num_controle = n()) %>% filter(num_controle >= 3) %>% .$candidate_gene_id
+  
+  controle_x_filtered <- controle_x %>% filter(candidate_gene_id %in% filtered_candidates)
+  
+  n_candidates = x %>% filter(gene_id_cleaned %in% filtered_candidates) %>% filter(n_segments_overlap > 0) %>% nrow()
+  
+  n_resamples = 100000
+  n_controle = controle_x_filtered %>%
+    group_by(candidate_gene_id) %>% 
+    dplyr::select(controle_n_segments_overlap) %>%
+    sample_n(size = n_resamples, replace = TRUE) %>% 
+    mutate(rep_ = rep(1:n_resamples)) %>%
+    group_by(rep_) %>%
+    dplyr::summarize(count = sum(controle_n_segments_overlap > 0))
+  
+  prop_ = n_controle %>% filter(count >= n_candidates) %>% nrow() / n_resamples
+  
+  data.frame(GO_category = go_terms_candidates_cleaned_filter_final_constant[i],Overall_category =  unique(x$namespace_1003),Go_depth = unique(x$GO_depth),p_val_unadjusted = prop_)
+  
+}
+
+stopCluster(cl)
+
+save(GO_set_p_values_constant,file = "GO_set_p_values_constant.RData")
+
+load("GO_set_p_values_constant.RData")
+
+GO_set_p_values_constant_df <- GO_set_p_values_constant  %>% 
+  mutate(p_val_adjst = p.adjust(p_val_unadjusted, method="BH")) %>% mutate(status = "constant")
+
+## for increase
+library(doParallel)
+library(foreach)
+library(dplyr)
+library(tidyverse)
+
+load("Gene_map_callable_features_GO_anno_increase.RData")
+
+load("go_terms_candidates_cleaned_filter_list_increase.RData")
+
+
+find_control_fn <- function(Candidate_genes_df,Controle_genes_df){
+  find_matching_genes <- function(candidate_row,controle_genes_df) {
+    matching_genes <- subset(controle_genes_df, gene_length_bins == candidate_row$gene_length_bins &
+                               BScore_bins == candidate_row$BScore_bins &
+                               n_SNPs_bins == candidate_row$n_SNPs_bins &
+                               rec_rate_bins == candidate_row$rec_rate_bins)
+    return(data.frame(controle_gene_id = matching_genes$gene_id_cleaned,controle_n_segments_overlap = matching_genes$n_segments_overlap)) 
+  }
+  
+  matching_genes <- list()
+  
+  
+  for(i in 1:length(Candidate_genes_df$chrom)) {
+    x <- find_matching_genes(candidate_row = Candidate_genes_df[i, ],controle_genes_df = Controle_genes_df) 
+    if(nrow(x) > 0){
+      matching_genes[[i]] <- x %>% mutate(candidate_gene_id = Candidate_genes_df[i, "gene_id_cleaned"],
+                                          candidate_n_segments_overlap = Candidate_genes_df[i, "n_segments_overlap"])
+    }
+    
+  }
+  
+  Matching_candidate_controle <- do.call('rbind',matching_genes)
+  return(Matching_candidate_controle)
+}
+
+no_cores <- 120
+
+cl <- makeCluster(no_cores)
+registerDoParallel(cl)
+
+GO_set_p_values_increase <- foreach(i = 1:length(go_terms_candidates_cleaned_filter_final_increase), .combine = 'rbind') %dopar% {
+  
+  library(dplyr)
+  library(tidyverse)
+  x <- Gene_map_callable_features_GO_increase %>% filter(go_name == go_terms_candidates_cleaned_filter_final_increase[i])
+  not_x <- Gene_map_callable_features_GO_increase %>% filter(go_name != go_terms_candidates_cleaned_filter_final_increase[i])
+  
+  controle_x <- find_control_fn(Candidate_genes_df = x, Controle_genes_df = not_x)
+  
+  filtered_candidates <- controle_x %>% group_by(candidate_gene_id) %>% 
+    summarize(num_controle = n()) %>% filter(num_controle >= 3) %>% .$candidate_gene_id
+  
+  controle_x_filtered <- controle_x %>% filter(candidate_gene_id %in% filtered_candidates)
+  
+  n_candidates = x %>% filter(gene_id_cleaned %in% filtered_candidates) %>% filter(n_segments_overlap > 0) %>% nrow()
+  
+  n_resamples = 100000
+  n_controle = controle_x_filtered %>%
+    group_by(candidate_gene_id) %>% 
+    dplyr::select(controle_n_segments_overlap) %>%
+    sample_n(size = n_resamples, replace = TRUE) %>% 
+    mutate(rep_ = rep(1:n_resamples)) %>%
+    group_by(rep_) %>%
+    dplyr::summarize(count = sum(controle_n_segments_overlap > 0))
+  
+  prop_ = n_controle %>% filter(count >= n_candidates) %>% nrow() / n_resamples
+  
+  data.frame(GO_category = go_terms_candidates_cleaned_filter_final_increase[i],Overall_category =  unique(x$namespace_1003),Go_depth = unique(x$GO_depth),p_val_unadjusted = prop_)
+  
+}
+
+stopCluster(cl)
+
+save(GO_set_p_values_increase,file = "GO_set_p_values_increase.RData")
+
+load("GO_set_p_values_increase.RData")
+
+GO_set_p_values_increase_df <- GO_set_p_values_increase  %>% 
+  mutate(p_val_adjst = p.adjust(p_val_unadjusted, method="BH"))  %>% mutate(status = "increase")
+
+GO_result_all <- rbind(GO_set_p_values_constant_df,GO_set_p_values_increase_df) %>% 
+  left_join(.,rbind(go_terms_candidates_constant_cleaned,go_terms_candidates_increase_cleaned)[,c("go_id","name_1006","definition_1006")],by=c("GO_category"="name_1006")) %>%
+  distinct(.,.keep_all = T) %>% dplyr::rename(go_discription = definition_1006)
+
+save(GO_result_all,file = "GO_enrichment_permutation_result.RData")
+
+GO_result_all_red <- GO_result_all %>% dplyr::select(!go_discription) %>% filter(p_val_adjst <= 0.05)
+
+write.table(GO_result_all_red,"GO_enrichment_permutation_result_significant.csv",quote = F,row.names = F,sep = "\t")
+
+```
+
