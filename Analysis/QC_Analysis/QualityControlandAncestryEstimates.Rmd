@@ -1,0 +1,2212 @@
+---
+title: "Early Modern Human Introgression Project: Quality Controle and Ancestry Estimates"
+author: Leonardo N. M. Iasi
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    keep_tex: yes
+    latex_engine: xelatex
+    fig_caption: yes
+header-includes:
+- \usepackage{setspace}
+- \doublespacing
+- \usepackage[none]{hyphenat}
+- \usepackage{amsfonts}
+- \usepackage{amssymb}
+- \usepackage{graphicx}
+- \usepackage{float}
+- \usepackage{xcolor}
+- \floatplacement{figure}{H}
+- \usepackage[left]{lineno}
+- \linenumbers
+
+---
+
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE}
+#Make code wrap text so it doesn't go off the page when Knitting to PDF
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+
+<style>
+body {
+text-align: justify}
+</style>
+  
+```{r warning=FALSE,message=FALSE,echo=F}
+library(ggplot2)
+library(ggrepel)
+library(tidyverse)
+library(egg)
+library(ggpubr)
+library(tidyverse)
+
+source("~/EMH_Introgression_Project/Introgression_Detection/scripts/Analysis_R_functions.R")
+
+folder_path = "~/EMH_Introgression_Project/Introgression_Detection/Paper_Figures/"
+
+folder_path_Sup_Tables = "~/EMH_Introgression_Project/Introgression_Detection/Supplements_Tables/"
+
+"%notin%" <- Negate("%in%")
+setwd(folder_path)
+
+THEME <-  theme_bw() + theme(axis.title=element_text(face="bold"))
+
+cluster_used = "clusterF3D_broad"
+
+```
+
+```{r warning=FALSE,message=FALSE,echo=F}
+### read in genetic clusters from different script (Defining_genetic_populations_cleaned.R) ###
+
+
+Joint_Meta <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_genetic_clusters_using_1240k.csv")
+
+
+cluster_color_broad_all = data.frame(clusterF3D_broad_all = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","North_Africa","Oceania","postLGM-WEurHG","preLGM-WEurHG","SA","Satsurblia","Siberia&Americas" ,"Sub-Sahara-Africa","SWA","WEur","Yamnaya"),
+                                 cluster_color = 
+                                   c("#009292FF","#FFCC00","#6DB6FFFF","#004949FF","#924900FF","#808080","#006DDBFF","#490092FF","#DB6D00FF","#920000FF","#FFB6DBFF","#24FF24FF","#000000FF","#B66DFFFF","#FF6DB6FF","#B6DBFFFF"))
+
+cluster_color_broad = data.frame(clusterF3D_broad = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","Oceania","postLGM-WEurHG","preLGM-WEurHG","SA","Satsurblia","Siberia&Americas" ,"SWA","WEur","Yamnaya"),
+                                  cluster_color = 
+                                    c("#009292FF","#FFCC00","#6DB6FFFF","#004949FF","#924900FF","#006DDBFF","#490092FF","#DB6D00FF","#920000FF","#FFB6DBFF","#24FF24FF","#B66DFFFF","#FF6DB6FF","#B6DBFFFF"))
+
+cluster_color_refined = data.frame(clusterF3D_refined = c("AncientEAS","ANE","ANS","EarlyOoA","EAS","EHG","IUP","Oceania","preLGM-WEurHG","SA","Satsurblia","Siberia&Americas" ,"SWA","WEur","WHG","Yamnaya"),
+                                 cluster_color = c("#009292FF","#6DB6FFFF","#004949FF","#924900FF","#DB6D00FF","#808080","#920000FF","#006DDBFF","#FFB6DBFF","#24FF24FF","#000000FF","#B66DFFFF","#FF6DB6FF","#490092FF","#B6DBFFFF","#FFCC00"))
+
+
+Supercluster_color = data.frame(SuperclusterF3D = c("Americas&Asia","EarlyOoA","Oceania","WEurCAS"),Supercluster_color = c("#924900FF","#004949FF","#006DDBFF","#FF6DB6FF"))
+
+Joint_Meta_long <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/Joint_Meta_data_long_with1240k.csv") %>%
+  mutate(SuperclusterF3D = ifelse(SuperclusterF3D == "Sahul","Oceania",SuperclusterF3D),
+         clusterF3D_broad = ifelse(clusterF3D_broad == "Sahul","Oceania",clusterF3D_broad))
+
+
+```
+
+
+# Techincal Validation
+
+## Calling fragments
+
+### Checking ancestral info
+
+```{r message=FALSE,echo=F, warning=FALSE, results = 'hide'}
+#load("~/EMH_Introgression_Project/Introgression_Detection/TechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/AncestralParam_new/Loschbour_TruePenalty_0.25_TrueAsc_archaicadmixtureAPX_TrueAfp_error2_ObsPenalty_0.25.RData")
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/AncestralParam_new/Shared_Map/Loschbour_TruePenalty_0.25_TrueAsc_archaicadmixtureAPX_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+maxLen = 1
+n_breaks = 30
+plot_var = "AdmixFParams"
+plot_asc = "archaicadmixtureAPX"
+
+
+res_obs_filtered = res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X") 
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered$map_len,na.rm = T)/2))
+
+res_obs_filtered %>%
+  filter(TruePenalty == TP) %>% filter(Obs_penalty == OP) %>% 
+  filter(True_map == "Shared_Map",Obs_map == "Shared_Map") %>%
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2) %>% mutate(TP_ = TP, OP_ = OP, ind_ = ind, ave_cov_ = unique(ave_cov$ave_cov_array)) -> Plot_data
+
+
+Plot_data_ancestral_info_Loschbour <-  Plot_data %>% filter(True_downsampling == Obs_downsampling) %>% 
+  filter(Obs_Ascertainment == plot_asc) %>%
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_data_ancestral_info_Loschbour$CLS <- factor(Plot_data_ancestral_info_Loschbour$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+
+
+
+P_ancestral_info_Loschbour  <- Plot_data_ancestral_info_Loschbour %>% 
+  filter(AdmixFParams != "error2") %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(!! rlang::sym(plot_var) ), vars(as.factor(round(Obs_downsampling*ave_cov_,2))),scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_ancestral_info_Loschbour$map_len_bin)),0.5)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("Loschbour")
+  #ggtitle(paste(ind,"True penalty: ",TP," ; Observed penalty: ",OP,sep = ""))
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/AncestralParam_new/Shared_Map/UstIshim_TruePenalty_0.25_TrueAsc_archaicadmixtureAPX_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+maxLen = 2
+n_breaks = 30
+plot_var = "AdmixFParams"
+plot_asc = "archaicadmixtureAPX"
+
+res_obs_filtered = res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen, chrom != "X") 
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered$map_len,na.rm = T)/2))
+
+res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% 
+  filter(map_len2 <= maxLen)  %>%
+  filter(TruePenalty == TP) %>% filter(Obs_penalty == OP) %>% 
+  filter(True_map == "Shared_Map",Obs_map == "Shared_Map") %>%
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2) %>% mutate(TP_ = TP, OP_ = OP, ind_ = ind, ave_cov_ = unique(ave_cov$ave_cov_array)) -> Plot_data
+
+
+Plot_data_ancestral_info_UstIshim <-  Plot_data %>% filter(True_downsampling == Obs_downsampling) %>% 
+  filter(Obs_Ascertainment == plot_asc)%>%
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_data_ancestral_info_UstIshim$CLS <- factor(Plot_data_ancestral_info_UstIshim$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+
+
+
+P_ancestral_info_UstIshim  <- Plot_data_ancestral_info_UstIshim %>%
+  filter(AdmixFParams != "error2") %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(!! rlang::sym(plot_var) ), vars(as.factor(round(Obs_downsampling*ave_cov_,2))),scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_ancestral_info_UstIshim$map_len_bin)),1)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("Ust'Ishim")
+  #ggtitle(paste(ind,"True penalty: ",TP," ; Observed penalty: ",OP,sep = ""))
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/AncestralParam_new/Shared_Map/HGDPFrench_TruePenalty_0.25_TrueAsc_archaicadmixtureAPX_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+maxLen = 0.5
+n_breaks = 30
+plot_var = "AdmixFParams"
+plot_asc = "archaicadmixtureAPX"
+ave_cov = 30
+
+res_obs_filtered = res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X") 
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered$map_len,na.rm = T)/2))
+
+res_obs_filtered %>%
+  filter(TruePenalty == TP) %>% filter(Obs_penalty == OP) %>% 
+  filter(True_map == "Shared_Map",Obs_map == "Shared_Map") %>%
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2) %>% mutate(TP_ = TP, OP_ = OP, ind_ = ind, ave_cov_ = ave_cov) -> Plot_data
+
+
+Plot_data_ancestral_info_HGDPFrench <-  Plot_data %>% filter(True_downsampling == Obs_downsampling) %>% 
+  filter(Obs_Ascertainment == plot_asc) %>%
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_data_ancestral_info_HGDPFrench$CLS <- factor(Plot_data_ancestral_info_HGDPFrench$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+
+
+
+P_ancestral_info_HGDPFrench  <- Plot_data_ancestral_info_HGDPFrench %>% 
+  filter(AdmixFParams != "error2") %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(!! rlang::sym(plot_var) ), vars(as.factor(round(Obs_downsampling*ave_cov_,2))),scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_ancestral_info_HGDPFrench$map_len_bin)),0.2)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("HGDP French")
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/AncestralParam_new/Shared_Map/HGDPHan_TruePenalty_0.25_TrueAsc_archaicadmixtureAPX_TrueAfp_error2_TrueMapAA_Map_ObsPenalty_0.25.RData")
+
+maxLen = 0.5
+n_breaks = 30
+plot_var = "AdmixFParams"
+plot_asc = "archaicadmixtureAPX"
+ave_cov = 30
+
+res_obs_filtered = res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X") 
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered$map_len,na.rm = T)/2))
+
+res_obs_filtered %>%
+  filter(TruePenalty == TP) %>% filter(Obs_penalty == OP) %>% 
+  filter(True_map == "Shared_Map",Obs_map == "Shared_Map") %>%
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2) %>% mutate(TP_ = TP, OP_ = OP, ind_ = ind, ave_cov_ = ave_cov) -> Plot_data
+
+
+Plot_data_ancestral_info_HGDPHan <-  Plot_data %>% filter(True_downsampling == Obs_downsampling) %>% 
+  filter(Obs_Ascertainment == plot_asc) %>%
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_data_ancestral_info_HGDPHan$CLS <- factor(Plot_data_ancestral_info_HGDPHan$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+
+
+
+P_ancestral_info_HGDPHan  <- Plot_data_ancestral_info_HGDPHan %>% 
+  filter(AdmixFParams != "error2") %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(!! rlang::sym(plot_var) ), vars(as.factor(round(Obs_downsampling*ave_cov_,2))),scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_ancestral_info_HGDPHan$map_len_bin)),0.2)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("HGDP Han")
+
+
+P_all <- ggpubr::ggarrange(P_ancestral_info_Loschbour,P_ancestral_info_UstIshim,P_ancestral_info_HGDPFrench,P_ancestral_info_HGDPHan,labels = c("A","B","C","D"),ncol = 2,nrow = 2,common.legend = T,legend = "bottom")
+
+
+P_ancient_only <- ggpubr::ggarrange(P_ancestral_info_Loschbour,P_ancestral_info_UstIshim,labels = c("A","B"),common.legend = T,legend = "bottom")
+
+ggsave(paste(folder_path,"Supplement/P_checkin_ancestral_info_params.png",sep=""),P_ancient_only,device = "png",height = 6,width = 14)
+
+ggsave(paste(folder_path,"Supplement/P_checkin_ancestral_info_params_all.png",sep=""),P_all,device = "png",height = 12,width = 14)
+
+```
+
+
+### Checking penalty param by length
+
+```{r message=FALSE,echo=F, warning=FALSE, results = 'hide'}
+
+Losch_obs_path_list = c("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.2_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/Loschbour_frag_comp_PenaltyParam.csv",
+                        "~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.25_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/Loschbour_frag_comp_PenaltyParam.csv",
+                        "~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.3_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/Loschbour_frag_comp_PenaltyParam.csv",
+                        "~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.4_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/Loschbour_frag_comp_PenaltyParam.csv")
+
+res_obs_penalty = do.call(rbind, lapply(Losch_obs_path_list, read.table, header=TRUE, sep=","))
+
+maxLen = 1
+n_breaks = 30
+
+
+res_obs_filtered = res_obs_penalty %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X") 
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered$map_len,na.rm = T)/2))
+
+res_obs_filtered %>%
+  filter(Obs_downsampling == 1) %>% 
+  filter(True_map == "Shared_Map",Obs_map == "Shared_Map") %>%
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2) -> Plot_data
+
+
+Plot_penalty_Loschbour <-  Plot_data  %>%
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_penalty_Loschbour$CLS <- factor(Plot_penalty_Loschbour$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+
+
+P_ancestral_info_Loschbour_all  <- Plot_penalty_Loschbour %>% 
+  filter(AdmixFParams == "error2") %>%
+  filter(Obs_Ascertainment == "archaicadmixtureAPX") %>% 
+  filter(True_penalty != Obs_penalty) %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(as.factor(True_penalty)),vars(Obs_penalty), scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_penalty_Loschbour$map_len_bin)),0.5)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("Loschbour")
+
+P_ancestral_info_Loschbour_red  <- Plot_penalty_Loschbour %>% 
+  filter(AdmixFParams == "error2") %>%
+  filter(Obs_Ascertainment == "archaicadmixtureAPX") %>% 
+  filter(True_penalty == 0.2) %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(as.factor(Obs_Ascertainment)),vars(Obs_penalty), scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_penalty_Loschbour$map_len_bin)),0.5)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("Loschbour")
+
+Ust_obs_path_list = c("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.2_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/UstIshim_frag_comp_PenaltyParam.csv",
+                        "~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.25_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/UstIshim_frag_comp_PenaltyParam.csv",
+                        "~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.3_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/UstIshim_frag_comp_PenaltyParam.csv",
+                        "~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.4_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/UstIshim_frag_comp_PenaltyParam.csv")
+
+res_obs_penalty = do.call(rbind, lapply(Ust_obs_path_list, read.table, header=TRUE, sep=","))
+
+maxLen = 2
+n_breaks = 30
+
+
+res_obs_filtered = res_obs_penalty %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X") 
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered$map_len,na.rm = T)/2))
+
+res_obs_filtered %>%
+  filter(Obs_downsampling == 1) %>% 
+  filter(True_map == "Shared_Map",Obs_map == "Shared_Map") %>%
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2)  -> Plot_data
+
+
+Plot_penalty_UI <-  Plot_data  %>%
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_penalty_UI$CLS <- factor(Plot_penalty_UI$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+ 
+
+P_ancestral_info_UstIshim_all  <- Plot_penalty_UI %>%
+  filter(AdmixFParams == "error2") %>%
+  filter(Obs_Ascertainment == "archaicadmixtureAPX") %>%
+  filter(True_penalty != Obs_penalty) %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(as.factor(True_penalty)),vars(Obs_penalty), scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_penalty_Loschbour$map_len_bin)),0.5)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("Ust'Ishim")
+  
+P_ancestral_info_UstIshim_red  <- Plot_penalty_UI %>%
+  filter(AdmixFParams == "error2") %>%
+  filter(Obs_Ascertainment == "archaicadmixtureAPX") %>%
+  filter(True_penalty == 0.2) %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(as.factor(Obs_Ascertainment)),vars(Obs_penalty), scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_penalty_Loschbour$map_len_bin)),0.5)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("Ust'Ishim")
+
+HGDPFrench_obs_path_list = c("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.2_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/HGDPFrench_frag_comp_PenaltyParam.csv",
+                        "~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.25_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/HGDPFrench_frag_comp_PenaltyParam.csv",
+                        "~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.3_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/HGDPFrench_frag_comp_PenaltyParam.csv",
+                        "~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.4_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/HGDPFrench_frag_comp_PenaltyParam.csv")
+
+res_obs_penalty = do.call(rbind, lapply(HGDPFrench_obs_path_list, read.table, header=TRUE, sep=","))
+
+maxLen = 0.5
+n_breaks = 30
+
+
+res_obs_filtered = res_obs_penalty %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X") 
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered$map_len,na.rm = T)/2))
+
+res_obs_filtered %>%
+  filter(Obs_downsampling == 1) %>% 
+  filter(True_map == "Shared_Map",Obs_map == "Shared_Map") %>%
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2)  -> Plot_data
+
+
+Plot_penalty_HGDPFrench <-  Plot_data  %>%
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_penalty_HGDPFrench$CLS <- factor(Plot_penalty_HGDPFrench$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+ 
+
+P_ancestral_info_HGDPFrench_all  <- Plot_penalty_HGDPFrench %>%
+  filter(AdmixFParams == "error2") %>%
+  filter(Obs_Ascertainment == "archaicadmixtureAPX") %>%
+  filter(True_penalty != Obs_penalty) %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(as.factor(True_penalty)),vars(Obs_penalty), scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_penalty_HGDPFrench$map_len_bin)),0.2)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("HGDP French")
+  
+P_ancestral_info_HGDPFrench_red  <- Plot_penalty_HGDPFrench %>%
+  filter(AdmixFParams == "error2") %>%
+  filter(Obs_Ascertainment == "archaicadmixtureAPX") %>%
+  filter(True_penalty == 0.2) %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(as.factor(Obs_Ascertainment)),vars(Obs_penalty), scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_penalty_HGDPFrench$map_len_bin)),0.2)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("HGDP French")
+
+
+HGDPHan_obs_path_list = c("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.2_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/HGDPHan_frag_comp_PenaltyParam.csv",
+                        "~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.25_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/HGDPHan_frag_comp_PenaltyParam.csv",
+                        "~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.3_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/HGDPHan_frag_comp_PenaltyParam.csv",
+                        "~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/error2/length_bin_15/5000/AFR-NEA-DEN/TrueAFparams_error2/TrueAsc_archaicadmixtureAPX/TrueDownsample_1/True_Penalty_0.4_minLen_0/TrueMapShared_Map/PenaltyParam/Shared_Map/HGDPHan_frag_comp_PenaltyParam.csv")
+
+res_obs_penalty = do.call(rbind, lapply(HGDPHan_obs_path_list, read.table, header=TRUE, sep=","))
+
+maxLen = 0.5
+n_breaks = 30
+
+
+res_obs_filtered = res_obs_penalty %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X") 
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered$map_len,na.rm = T)/2))
+
+res_obs_filtered %>%
+  filter(Obs_downsampling == 1) %>% 
+  filter(True_map == "Shared_Map",Obs_map == "Shared_Map") %>%
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2)  -> Plot_data
+
+
+Plot_penalty_HGDPHan <-  Plot_data  %>%
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_penalty_HGDPHan$CLS <- factor(Plot_penalty_HGDPHan$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+ 
+
+P_ancestral_info_HGDPHan_all  <- Plot_penalty_HGDPHan %>%
+  filter(AdmixFParams == "error2") %>%
+  filter(Obs_Ascertainment == "archaicadmixtureAPX") %>%
+  filter(True_penalty != Obs_penalty) %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(as.factor(True_penalty)),vars(Obs_penalty), scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_penalty_HGDPHan$map_len_bin)),0.2)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("HGDP Han")
+  
+P_ancestral_info_HGDPHan_red  <- Plot_penalty_HGDPHan %>%
+  filter(AdmixFParams == "error2") %>%
+  filter(Obs_Ascertainment == "archaicadmixtureAPX") %>%
+  filter(True_penalty == 0.2) %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(as.factor(Obs_Ascertainment)),vars(Obs_penalty), scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_penalty_HGDPHan$map_len_bin)),0.2)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("HGDP Han")
+
+P_penalty_all <- ggpubr::ggarrange(P_ancestral_info_Loschbour_all,P_ancestral_info_UstIshim_all,P_ancestral_info_HGDPFrench_all,P_ancestral_info_HGDPHan_all,labels = c("A","B","C","D"),nrow=2,ncol=2,common.legend = T,legend = "bottom")
+ggsave(paste(folder_path,"Supplement/P_checkin_penalty_AAX.png",sep=""),P_penalty_all,device = "png",height = 16,width = 14)
+
+
+P_penalty_ancient_all <- ggpubr::ggarrange(P_ancestral_info_Loschbour_all,P_ancestral_info_UstIshim_all,labels = c("A","B"),common.legend = T,legend = "bottom")
+ggsave(paste(folder_path,"Supplement/P_checkin_penalty_AAX_ancient_only.png",sep=""),P_penalty_ancient_all,device = "png",height = 12,width = 14)
+
+P_penalty_ancient_red <- ggpubr::ggarrange(P_ancestral_info_Loschbour_red,P_ancestral_info_UstIshim_red,labels = c("A","B"),common.legend = T,legend = "bottom",nrow=2)
+ggsave(paste(folder_path,"Supplement/P_checkin_penalty_AAX_True_0.2_ancient_only.png",sep=""),P_penalty_ancient_red,device = "png",height = 6,width = 7)
+```
+
+### Checking ascertainments
+
+```{r message=FALSE,echo=F, warning=FALSE, results = 'hide'}
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/CovAscParamerror2/Shared_Map/Updated/Loschbour_TruePenalty_0.25_TrueAsc_ArchaicPlusUnfiltered_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+ave_cov_L = ave_cov
+
+maxLen = 1
+n_breaks = 30
+
+plot_var = "Obs_Ascertainment"
+plot_asc = "Obs_Ascertainment"
+
+
+res_obs_filtered_Losch = res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X")  
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered_Losch$map_len,na.rm = T)/2))
+
+
+res_obs_filtered_Losch %>%  
+  filter(TruePenalty == TP_) %>% filter(Obs_penalty == OP_) %>% 
+  filter(True_map == "Shared_Map",Obs_map == "Shared_Map") %>%
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2)-> Plot_data_Losch
+
+Plot_data_Losch <-  Plot_data_Losch  %>%
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_data_Losch$CLS <- factor(Plot_data_Losch$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+Plot_data_Losch$Obs_Ascertainment <- ifelse(Plot_data_Losch$Obs_Ascertainment == "ArchaicPlusUnfiltered", "ExtendedArchaic",
+                                            ifelse(Plot_data_Losch$Obs_Ascertainment == "archaicadmixtureAPX","archaicadmixture",Plot_data_Losch$Obs_Ascertainment))
+Plot_data_Losch$Obs_Ascertainment <- factor(Plot_data_Losch$Obs_Ascertainment, levels=c("A1240k","archaicadmixture","DiagnosticSites","ExtendedArchaic" ))
+ 
+
+
+P_ascertainment_Loschbour  <- ggplot(Plot_data_Losch, aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) + 
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(!! rlang::sym(plot_var) ), vars(as.factor(round(Obs_downsampling*ave_cov_L$ave_cov_array,2))),scales = 'free_x')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_Losch$map_len_bin)),0.5)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("Loschbour")
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/CovAscParamerror2/Shared_Map/Updated/UstIshim_TruePenalty_0.25_TrueAsc_ArchaicPlusUnfiltered_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+ave_cov_UI = ave_cov
+
+maxLen = 2
+n_breaks = 30
+
+plot_asc = "Obs_Ascertainment"
+
+
+res_obs_filtered_UI = res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X") 
+
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered_UI$map_len,na.rm = T)/2))
+
+
+res_obs_filtered_UI %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen)  %>%
+  filter(TruePenalty == TP_) %>% filter(Obs_penalty == OP_) %>% 
+  filter(True_map == "Shared_Map",Obs_map == "Shared_Map") %>%
+  mutate(map_len_bin = cut(map_len2, breaks = 30),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2)-> Plot_data_Ust
+
+Plot_data_Ust <-  Plot_data_Ust  %>%
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_data_Ust$CLS <- factor(Plot_data_Ust$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+Plot_data_Ust$Obs_Ascertainment <- ifelse(Plot_data_Ust$Obs_Ascertainment == "ArchaicPlusUnfiltered", "ExtendedArchaic",
+                                            ifelse(Plot_data_Ust$Obs_Ascertainment == "archaicadmixtureAPX","archaicadmixture",Plot_data_Ust$Obs_Ascertainment))
+Plot_data_Ust$Obs_Ascertainment <- factor(Plot_data_Ust$Obs_Ascertainment, levels=c("A1240k","archaicadmixture","DiagnosticSites","ExtendedArchaic" ))
+
+P_ascertainment_UstIshim  <- ggplot(Plot_data_Ust, aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) + 
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(!! rlang::sym(plot_var) ), vars(as.factor(round(Obs_downsampling*ave_cov_UI$ave_cov_array,2))),scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_Ust$map_len_bin)),1)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("Ust'Ishim")
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/CovAscParamerror2/Shared_Map/Updated/HGDPFrench_TruePenalty_0.25_TrueAsc_ArchaicPlusUnfiltered_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+ave_cov_HGDPFrench = 30
+
+maxLen = 0.5
+n_breaks = 30
+
+plot_asc = "Obs_Ascertainment"
+
+
+res_obs_filtered_HGDPFrench = res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen) 
+
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered_HGDPFrench$map_len,na.rm = T)/2))
+
+
+res_obs_filtered_HGDPFrench %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen)  %>%
+  filter(TruePenalty == TP_) %>% filter(Obs_penalty == OP_) %>% 
+  filter(True_map == "Shared_Map",Obs_map == "Shared_Map") %>%
+  mutate(map_len_bin = cut(map_len2, breaks = 30),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2)-> Plot_data_HGDPFrench
+
+Plot_data_HGDPFrench <-  Plot_data_HGDPFrench  %>%
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_data_HGDPFrench$CLS <- factor(Plot_data_HGDPFrench$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+Plot_data_HGDPFrench$Obs_Ascertainment <- ifelse(Plot_data_HGDPFrench$Obs_Ascertainment == "ArchaicPlusUnfiltered", "ExtendedArchaic",
+                                            ifelse(Plot_data_HGDPFrench$Obs_Ascertainment == "archaicadmixtureAPX","archaicadmixture",Plot_data_HGDPFrench$Obs_Ascertainment))
+Plot_data_HGDPFrench$Obs_Ascertainment <- factor(Plot_data_HGDPFrench$Obs_Ascertainment, levels=c("A1240k","archaicadmixture","DiagnosticSites","ExtendedArchaic" ))
+
+
+P_ascertainment_HGDPFrench  <- ggplot(Plot_data_HGDPFrench, aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) + 
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(!! rlang::sym(plot_var) ), vars(as.factor(round(Obs_downsampling*ave_cov_HGDPFrench,2))),scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_HGDPFrench$map_len_bin)),0.2)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("HGDP French")
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/CovAscParamerror2/Shared_Map/Updated/HGDPHan_TruePenalty_0.25_TrueAsc_ArchaicPlusUnfiltered_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+ave_cov_HGDPHan = 30
+
+maxLen = 0.5
+n_breaks = 30
+
+plot_asc = "Obs_Ascertainment"
+
+
+res_obs_filtered_HGDPHan = res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen) 
+
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered_HGDPHan$map_len,na.rm = T)/2))
+
+
+res_obs_filtered_HGDPHan %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen)  %>%
+  filter(TruePenalty == TP_) %>% filter(Obs_penalty == OP_) %>% 
+  filter(True_map == "Shared_Map",Obs_map == "Shared_Map") %>%
+  mutate(map_len_bin = cut(map_len2, breaks = 30),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2)-> Plot_data_HGDPHan
+
+Plot_data_HGDPHan <-  Plot_data_HGDPHan  %>%
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_data_HGDPHan$CLS <- factor(Plot_data_HGDPHan$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+Plot_data_HGDPHan$Obs_Ascertainment <- ifelse(Plot_data_HGDPHan$Obs_Ascertainment == "ArchaicPlusUnfiltered", "ExtendedArchaic",
+                                            ifelse(Plot_data_HGDPHan$Obs_Ascertainment == "archaicadmixtureAPX","archaicadmixture",Plot_data_HGDPHan$Obs_Ascertainment))
+Plot_data_HGDPHan$Obs_Ascertainment <- factor(Plot_data_HGDPHan$Obs_Ascertainment, levels=c("A1240k","archaicadmixture","DiagnosticSites","ExtendedArchaic" ))
+
+P_ascertainment_HGDPHan  <- ggplot(Plot_data_HGDPHan, aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) + 
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(!! rlang::sym(plot_var) ), vars(as.factor(round(Obs_downsampling*ave_cov_HGDPFrench,2))),scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_HGDPHan$map_len_bin)),0.2)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("HGDP Han")
+
+P_all <- ggpubr::ggarrange(P_ascertainment_Loschbour,P_ascertainment_UstIshim,P_ascertainment_HGDPFrench,P_ascertainment_HGDPHan,labels = c("A","B","C","D"),ncol = 2,nrow = 2,common.legend = T,legend = "bottom")
+
+ggsave(paste(folder_path,"Supplement/P_checkin_ascertainment_cov_on_frag_calling.png",sep=""),P_all,device = "png",height = 16,width = 14)
+
+P_ancient_only <- ggpubr::ggarrange(P_ascertainment_Loschbour,P_ascertainment_UstIshim,labels = c("A","B"),common.legend = T,legend = "bottom")
+ggsave(paste(folder_path,"Supplement/P_checkin_ascertainment_cov_on_frag_calling_ancient_only.png",sep=""),P_ancient_only,device = "png",height = 8,width = 14)
+```
+
+#### Checking length distribution between ascerteinments
+
+```{r message=FALSE,echo=F, warning=FALSE, results = 'hide'}
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/CovAscParamerror2/Shared_Map/Updated/Loschbour_TruePenalty_0.25_TrueAsc_ArchaicPlusUnfiltered_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+P_Loschbour_asc_down_seg_length_data <- res_obs %>% filter(Test_status != "true",Obs_penalty == 0.25,
+                                                           map_len >= 0.2,Obs_map == "Shared_Map") %>% 
+  distinct(chrom,start,end,Obs_downsampling,Obs_Ascertainment,.keep_all = T) %>%
+  mutate(sample = "Loschbour",cov = as.factor(round(Obs_downsampling*ave_cov$ave_cov_array,2)))%>% ungroup()
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/CovAscParamerror2/Shared_Map/Updated/UstIshim_TruePenalty_0.25_TrueAsc_ArchaicPlusUnfiltered_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+P_UI_asc_down_seg_length_data <- res_obs %>% filter(Test_status != "true",Obs_penalty == 0.25,
+                                                    map_len >= 0.2,Obs_map == "Shared_Map") %>% 
+  distinct(chrom,start,end,Obs_downsampling,Obs_Ascertainment,.keep_all = T) %>%
+  mutate(sample = "Ust'Ishim",cov = as.factor(round(Obs_downsampling*ave_cov$ave_cov_array,2)))%>% ungroup()
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/CovAscParamerror2/Shared_Map/Updated/HGDPFrench_TruePenalty_0.25_TrueAsc_ArchaicPlusUnfiltered_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+P_French_asc_down_seg_length_data <- res_obs %>% filter(Test_status != "true",
+                                                        Obs_penalty == 0.25,map_len >= 0.05,Obs_map == "Shared_Map") %>% 
+  distinct(chrom,start,end,Obs_downsampling,Obs_Ascertainment,.keep_all = T) %>%
+  mutate(sample = "HGDP French",cov = as.factor(round(Obs_downsampling*30,2)))%>% ungroup()
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/CovAscParamerror2/Shared_Map/Updated/HGDPHan_TruePenalty_0.25_TrueAsc_ArchaicPlusUnfiltered_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+P_Han_asc_down_seg_length_data <- res_obs %>% filter(Test_status != "true",Obs_penalty == 0.25,
+                                                     map_len >= 0.05,Obs_map == "Shared_Map") %>% 
+  distinct(chrom,start,end,Obs_downsampling,Obs_Ascertainment,.keep_all = T) %>%
+  mutate(sample = "HGDP Han",cov = as.factor(round(Obs_downsampling*30,2))) %>% ungroup()
+  
+P_asc_down_seg_length <- rbind(P_Loschbour_asc_down_seg_length_data,P_UI_asc_down_seg_length_data,
+                               P_French_asc_down_seg_length_data,P_Han_asc_down_seg_length_data) %>%
+  group_by(sample,Obs_Ascertainment,Obs_downsampling) %>%
+  mutate(rank_length = rank(-(map_len),ties.method = "random")) %>%
+  top_n(100,wt = map_len) %>%
+  ggplot(.,aes(x =  map_len , y = log(rank_length), col = Obs_Ascertainment,shape=Obs_Ascertainment)) +
+  facet_wrap(sample~cov,scales = "free_x",ncol = 6) +
+  geom_point(alpha= 0.7,size = 2) +
+  THEME +
+  #geom_smooth(method = "lm") +
+  coord_cartesian(expand = T) +
+  #geom_vline(xintercept = 0.2,linetype = "dotted") +
+  xlab("Segment length in centMorgan") +
+  ylab("segments ranked by size (log scaled)") +
+  labs(col='Ascertainment',shape='Ascertainment')
+
+ggsave(paste(folder_path,"Supplement/P_checkin_ascertainment_cov_on_frag_length.png",sep=""),P_asc_down_seg_length,device = "png",height = 16,width = 14)
+
+  
+```
+
+
+### Checking Map
+
+```{r message=FALSE,echo=F, warning=FALSE, results = 'hide'}
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/MapComparison/AA_Map/Loschbour_TruePenalty_0.25_TrueAsc_archaicadmixtureAPX_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+ave_cov_L = ave_cov
+
+maxLen = 1
+n_breaks = 30
+
+plot_var = "Obs_map"
+
+
+res_obs_filtered_Losch = res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X")  
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered_Losch$map_len,na.rm = T)/2))
+
+
+res_obs_filtered_Losch %>%  
+  filter(TruePenalty == 0.25) %>% filter(Obs_penalty == 0.25) %>% 
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2)-> Plot_data_Losch
+
+Plot_data_Losch <-  Plot_data_Losch  %>% filter(True_downsampling == Obs_downsampling) %>% 
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_data_Losch$CLS <- factor(Plot_data_Losch$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+
+
+
+P_Map_Loschbour  <- Plot_data_Losch %>%
+  mutate(Obs_map = "African Amarican Map") %>%
+ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) + 
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(!! rlang::sym(plot_var) ), vars(as.factor(round(Obs_downsampling*ave_cov_L$ave_cov_array,2))),scales = 'free_x')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_Losch$map_len_bin)),0.5)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("Loschbour")
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/MapComparison/AA_Map/UstIshim_TruePenalty_0.25_TrueAsc_archaicadmixtureAPX_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+ave_cov_UI = ave_cov
+
+plot_var = "Obs_map"
+
+maxLen = 2
+n_breaks = 30
+
+
+res_obs_filtered_UI = res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X")  
+
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered_UI$map_len,na.rm = T)/2))
+
+
+res_obs_filtered_UI %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen)  %>%
+  filter(TruePenalty == 0.25) %>% filter(Obs_penalty == 0.25) %>% 
+  mutate(map_len_bin = cut(map_len2, breaks = 30),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2)-> Plot_data_Ust
+
+Plot_data_Ust <-  Plot_data_Ust  %>% filter(True_downsampling == Obs_downsampling) %>% 
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_data_Ust$CLS <- factor(Plot_data_Ust$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+ 
+
+P_Map_UstIshim  <- 
+  Plot_data_Ust %>%
+  mutate(Obs_map = "African Amarican Map") %>%
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) + 
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(!! rlang::sym(plot_var) ), vars(as.factor(round(Obs_downsampling*ave_cov_UI$ave_cov_array,2))),scales = 'free')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_Ust$map_len_bin)),1)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("Ust'Ishim")
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/MapComparison/AA_Map/HGDPFrench_TruePenalty_0.25_TrueAsc_archaicadmixtureAPX_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+ave_cov = 30
+
+maxLen = 0.5
+n_breaks = 30
+
+plot_var = "Obs_map"
+
+
+res_obs_filtered_HGDPFrench = res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X")  
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered_HGDPFrench$map_len,na.rm = T)/2))
+
+
+res_obs_filtered_HGDPFrench %>%  
+  filter(TruePenalty == 0.25) %>% filter(Obs_penalty == 0.25) %>% 
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2)-> Plot_data_HGDPFrench
+
+Plot_data_HGDPFrench <-  Plot_data_HGDPFrench  %>% filter(True_downsampling == Obs_downsampling) %>% 
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_data_HGDPFrench$CLS <- factor(Plot_data_HGDPFrench$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+
+
+
+P_Map_HGDPFrench  <- Plot_data_HGDPFrench %>%
+  mutate(Obs_map = "African Amarican Map") %>%
+ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) + 
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(!! rlang::sym(plot_var) ), vars(as.factor(round(Obs_downsampling*ave_cov,2))),scales = 'free_x')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_HGDPFrench$map_len_bin)),0.2)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("HGDP French")
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/MapComparison/AA_Map/HGDPHan_TruePenalty_0.25_TrueAsc_archaicadmixtureAPX_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+ave_cov = 30
+
+maxLen = 0.5
+n_breaks = 30
+
+plot_var = "Obs_map"
+
+
+res_obs_filtered_HGDPHan = res_obs %>%  filter(Test_status != "true") %>% mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X")  
+
+n_breaks_L = round(n_breaks * (max(res_obs_filtered_HGDPHan$map_len,na.rm = T)/2))
+
+
+res_obs_filtered_HGDPHan %>%  
+  filter(TruePenalty == 0.25) %>% filter(Obs_penalty == 0.25) %>% 
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2)-> Plot_data_HGDPHan
+
+Plot_data_HGDPHan <-  Plot_data_HGDPHan  %>% filter(True_downsampling == Obs_downsampling) %>% 
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS)) 
+Plot_data_HGDPHan$CLS <- factor(Plot_data_HGDPHan$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+
+
+
+P_Map_HGDPHan  <- Plot_data_HGDPHan %>%
+  mutate(Obs_map = "African Amarican Map") %>%
+ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) + 
+  geom_bar(position="fill", stat="identity") +
+  facet_grid(vars(!! rlang::sym(plot_var) ), vars(as.factor(round(Obs_downsampling*ave_cov,2))),scales = 'free_x')+
+  THEME +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_HGDPHan$map_len_bin)),0.2)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") +
+  ggtitle("HGDP Han")
+
+P_all<- ggpubr::ggarrange(P_Map_Loschbour,P_Map_UstIshim,P_Map_HGDPFrench,P_Map_HGDPHan,
+                                    labels = c("A","B","C","D"),ncol = 2,nrow = 2,common.legend = T,legend = "bottom")
+ggsave(paste(folder_path,"Supplement/P_checkin_map_cov_on_frag_calling.png",sep=""),P_all,device = "png",height = 8,width = 14)
+
+P_ancient_only <- ggpubr::ggarrange(P_Map_Loschbour,P_Map_UstIshim,labels = c("A","B"),common.legend = T,legend = "bottom")
+ggsave(paste(folder_path,"Supplement/P_checkin_map_cov_on_frag_calling_ancient_only.png",sep=""),P_ancient_only,device = "png",height = 4,width = 14)
+```
+
+### Checking Map length Distribution
+
+```{r message=FALSE,echo=F, warning=FALSE, results = 'hide'}
+Loschbour_AA_Map <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/rle/error2/length_bin_15/5000/AFR-NEA-DEN/AA_Map/Loschbour_archaicadmixtureAPX.rle0.25_downsampled.1.xz") %>% mutate(sample = "Loschbour",map_used = "AA_Map")
+Loschbour_AA_Map_Top <- Loschbour_AA_Map %>% filter(type == "state",target == "NEA",chrom != "X") %>% top_n(100, wt = map_len) %>% 
+  arrange(desc(map_len)) %>% rownames_to_column(.,"order") %>% mutate(order = as.numeric(order))
+
+Loschbour_Shared_Map <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/rle/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Loschbour_archaicadmixtureAPX.rle0.25_downsampled.1.xz") %>% mutate(sample = "Loschbour",map_used = "Shared_Map")
+Loschbour_Shared_Map_Top <- Loschbour_Shared_Map %>% filter(type == "state",target == "NEA",chrom != "X")  %>% 
+  top_n(100, wt = map_len) %>% 
+  arrange(desc(map_len)) %>% rownames_to_column(.,"order") %>% mutate(order = as.numeric(order))
+
+UI_AA_Map <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/rle/error2/length_bin_15/5000/AFR-NEA-DEN/AA_Map/UstIshim_archaicadmixtureAPX.rle0.25_downsampled.1.xz") %>% mutate(sample = "Ust'Ishim",map_used = "AA_Map")
+UI_AA_Map_Top <- UI_AA_Map %>% filter(type == "state",target == "NEA",chrom != "X")  %>% top_n(100, wt = map_len) %>% 
+  arrange(desc(map_len)) %>% rownames_to_column(.,"order") %>% mutate(order = as.numeric(order))
+
+UI_Shared_Map <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/rle/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/UstIshim_archaicadmixtureAPX.rle0.25_downsampled.1.xz") %>% mutate(sample = "Ust'Ishim",map_used = "Shared_Map")
+UI_Shared_Map_Top <- UI_Shared_Map %>% filter(type == "state",target == "NEA",chrom != "X")  %>% top_n(100, wt = map_len) %>% 
+  arrange(desc(map_len)) %>% rownames_to_column(.,"order") %>% mutate(order = as.numeric(order))
+
+HGDPFrench_AA_Map <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/rle/error2/length_bin_15/5000/AFR-NEA-DEN/AA_Map/HGDPFrench_archaicadmixtureAPX.rle0.25_downsampled.1.xz") %>% mutate(sample = "HGDP French",map_used = "AA_Map")
+
+HGDPFrench_AA_Map_Top <- HGDPFrench_AA_Map %>% filter(type == "state",target == "NEA",chrom != "X") %>% top_n(100, wt = map_len) %>% 
+  arrange(desc(map_len)) %>% rownames_to_column(.,"order") %>% mutate(order = as.numeric(order))
+
+
+HGDPFrench_Shared_Map <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/rle/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/HGDPFrench_archaicadmixtureAPX.rle0.25_downsampled.1.xz") %>% mutate(sample = "HGDP French",map_used = "Shared_Map")
+
+HGDPFrench_Shared_Map_Top <- HGDPFrench_Shared_Map %>% filter(type == "state",target == "NEA",chrom != "X")  %>% 
+  top_n(100, wt = map_len) %>% 
+  arrange(desc(map_len)) %>% rownames_to_column(.,"order") %>% mutate(order = as.numeric(order))
+
+HGDPHan_AA_Map <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/rle/error2/length_bin_15/5000/AFR-NEA-DEN/AA_Map/HGDPHan_archaicadmixtureAPX.rle0.25_downsampled.1.xz") %>% mutate(sample = "HGDP Han",map_used = "AA_Map")
+
+HGDPHan_AA_Map_Top <- HGDPHan_AA_Map %>% filter(type == "state",target == "NEA",chrom != "X") %>% top_n(100, wt = map_len) %>% 
+  arrange(desc(map_len)) %>% rownames_to_column(.,"order") %>% mutate(order = as.numeric(order))
+
+
+HGDPHan_Shared_Map <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/rle/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/HGDPHan_archaicadmixtureAPX.rle0.25_downsampled.1.xz") %>% mutate(sample = "HGDP Han",map_used = "Shared_Map")
+
+HGDPHan_Shared_Map_Top <- HGDPHan_Shared_Map %>% filter(type == "state",target == "NEA",chrom != "X")  %>% 
+  top_n(100, wt = map_len) %>% 
+  arrange(desc(map_len)) %>% rownames_to_column(.,"order") %>% mutate(order = as.numeric(order))
+
+
+
+P_len_distr <- rbind(Loschbour_AA_Map_Top,Loschbour_Shared_Map_Top,UI_AA_Map_Top,UI_Shared_Map_Top,
+                     HGDPFrench_AA_Map_Top,HGDPFrench_Shared_Map_Top,HGDPHan_AA_Map_Top,HGDPHan_Shared_Map_Top) %>%
+  mutate(map_used = ifelse(map_used == "AA_Map", "African American Map","Shared Map")) %>%
+  ggplot(.,aes(x=map_len,y=log10(order),color=map_used))+
+    facet_grid(~sample,scales = "free")+
+    geom_point() +
+    THEME +
+    xlab("Genetic length in cM")+
+    ylab("Top 100 segments, sorted by size (log scale)") + 
+    guides(color=guide_legend(title="Genetic Map"))
+
+
+P_len_distr_hist <- rbind(Loschbour_AA_Map_Top,Loschbour_Shared_Map_Top,UI_AA_Map_Top,UI_Shared_Map_Top,
+                     HGDPFrench_AA_Map_Top,HGDPFrench_Shared_Map_Top,HGDPHan_AA_Map_Top,HGDPHan_Shared_Map_Top) %>%
+  mutate(map_used = ifelse(map_used == "AA_Map", "African American Map","Shared Map")) %>%
+  filter(type == "state",target == "NEA") %>%
+  ggplot(.,aes(x=map_len,fill=map_used))+
+  geom_histogram( colour="black",alpha=0.5, position="identity") +
+  facet_grid(~sample,scales = "free")+
+  THEME +
+  xlab("Genetic length in cM")+
+  ylab("Segment count") + 
+  guides(fill=guide_legend(title="Genetic Map"))
+
+P_all <- ggpubr::ggarrange(P_len_distr,P_len_distr_hist,labels = c("A","B"),nrow = 2,common.legend = T,legend = "bottom")
+ggsave(paste(folder_path,"Supplement/P_checkin_map_length_distribution_all.png",sep=""),P_all,device = "png",height = 10,width = 14)
+
+P_ancient_only <- ggpubr::ggarrange(P_len_distr,P_len_distr_hist,labels = c("A","B"),common.legend = T,legend = "bottom")
+ggsave(paste(folder_path,"Supplement/P_checkin_map_length_distribution_ancient_only.png",sep=""),P_all,device = "png",height = 8,width = 14)
+
+```
+
+### check correlation between n snps of a bin and NEA ancestry
+
+```{r warning=FALSE,message=FALSE,echo=F}
+
+UI_bin_file_1 <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/UstIshim_archaicadmixtureAPX_downsampled.1.bin.xz") %>% mutate(ave_cov = Joint_Meta$ave_cov_array[Joint_Meta$sample_name == "UstIshim"] * 1,NEA_all = NEA + AFRNEA) %>% dplyr::select(n_snps,NEA_all,ave_cov)
+UI_bin_file_02 <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/UstIshim_archaicadmixtureAPX_downsampled.0.2.bin.xz") %>% mutate(ave_cov = Joint_Meta$ave_cov_array[Joint_Meta$sample_name == "UstIshim"] * 0.2,NEA_all = NEA + AFRNEA)%>% dplyr::select(n_snps,NEA_all,ave_cov)
+UI_bin_file_01 <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/UstIshim_archaicadmixtureAPX_downsampled.0.1.bin.xz") %>% mutate(ave_cov = Joint_Meta$ave_cov_array[Joint_Meta$sample_name == "UstIshim"] * 0.1,NEA_all = NEA + AFRNEA)%>% dplyr::select(n_snps,NEA_all,ave_cov)
+UI_bin_file_002 <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/UstIshim_archaicadmixtureAPX_downsampled.0.02.bin.xz") %>% mutate(ave_cov = Joint_Meta$ave_cov_array[Joint_Meta$sample_name == "UstIshim"] * 0.02,NEA_all = NEA + AFRNEA)%>% dplyr::select(n_snps,NEA_all,ave_cov)
+UI_bin_file_001 <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/UstIshim_archaicadmixtureAPX_downsampled.0.01.bin.xz") %>% mutate(ave_cov = Joint_Meta$ave_cov_array[Joint_Meta$sample_name == "UstIshim"] * 0.01,NEA_all = NEA + AFRNEA)%>% dplyr::select(n_snps,NEA_all,ave_cov)
+UI_bin_file_0005 <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/UstIshim_archaicadmixtureAPX_downsampled.0.005.bin.xz") %>% mutate(ave_cov = Joint_Meta$ave_cov_array[Joint_Meta$sample_name == "UstIshim"] * 0.005,NEA_all = NEA + AFRNEA)%>% dplyr::select(n_snps,NEA_all,ave_cov)
+
+UI_bins <- rbind(UI_bin_file_1,UI_bin_file_02,UI_bin_file_01,UI_bin_file_002,UI_bin_file_001,UI_bin_file_0005)
+
+rm(UI_bin_file_1,UI_bin_file_02,UI_bin_file_01,UI_bin_file_002,UI_bin_file_001,UI_bin_file_0005)
+
+UI_n_snp_NEA_pp_cor <- UI_bins %>% filter(n_snps > 0, n_snps < 100) %>%
+  ggplot(data= .,aes(x=n_snps,y=NEA_all)) +
+  facet_wrap(~round(ave_cov,2),scales = "free_x") +
+  #geom_bin2d(bins = 70) +
+  #scale_fill_continuous(type = "viridis") +
+  geom_point(alpha=0.05,volor="grey") +
+  geom_smooth(method = "lm") +
+  stat_cor(method = "pearson",label.x = 10,size=4,face="bold") +
+  THEME +
+  coord_cartesian(expand = F) +
+  xlab("# SNP per bin") +
+  ylab("Posterior probability for Neandertal ancestry in bin") +
+  ggtitle("Ust'Ishim")
+
+
+LB_bin_file_1 <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Loschbour_archaicadmixtureAPX_downsampled.1.bin.xz") %>% mutate(ave_cov = Joint_Meta$ave_cov_array[Joint_Meta$sample_name == "Loschbour"] * 1,NEA_all = NEA + AFRNEA) %>% dplyr::select(n_snps,NEA_all,ave_cov)
+LB_bin_file_02 <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Loschbour_archaicadmixtureAPX_downsampled.0.2.bin.xz") %>% mutate(ave_cov = Joint_Meta$ave_cov_array[Joint_Meta$sample_name == "Loschbour"] * 0.2,NEA_all = NEA + AFRNEA)%>% dplyr::select(n_snps,NEA_all,ave_cov)
+LB_bin_file_01 <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Loschbour_archaicadmixtureAPX_downsampled.0.1.bin.xz") %>% mutate(ave_cov = Joint_Meta$ave_cov_array[Joint_Meta$sample_name == "Loschbour"] * 0.1,NEA_all = NEA + AFRNEA)%>% dplyr::select(n_snps,NEA_all,ave_cov)
+LB_bin_file_002 <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Loschbour_archaicadmixtureAPX_downsampled.0.02.bin.xz") %>% mutate(ave_cov = Joint_Meta$ave_cov_array[Joint_Meta$sample_name == "Loschbour"] * 0.02,NEA_all = NEA + AFRNEA)%>% dplyr::select(n_snps,NEA_all,ave_cov)
+LB_bin_file_001 <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Loschbour_archaicadmixtureAPX_downsampled.0.01.bin.xz") %>% mutate(ave_cov = Joint_Meta$ave_cov_array[Joint_Meta$sample_name == "Loschbour"] * 0.01,NEA_all = NEA + AFRNEA)%>% dplyr::select(n_snps,NEA_all,ave_cov)
+LB_bin_file_0005 <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/NewTechnicalValidations_newREF_admixfrog0.7/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Loschbour_archaicadmixtureAPX_downsampled.0.005.bin.xz") %>% mutate(ave_cov = Joint_Meta$ave_cov_array[Joint_Meta$sample_name == "Loschbour"] * 0.005,NEA_all = NEA + AFRNEA)%>% dplyr::select(n_snps,NEA_all,ave_cov)
+
+LB_bins <- rbind(LB_bin_file_1,LB_bin_file_02,LB_bin_file_01,LB_bin_file_002,LB_bin_file_001,LB_bin_file_0005)
+
+rm(LB_bin_file_1,LB_bin_file_02,LB_bin_file_01,LB_bin_file_002,LB_bin_file_001,LB_bin_file_0005)
+
+LB_n_snp_NEA_pp_cor <- LB_bins %>% filter(n_snps > 0, n_snps < 100) %>%
+  ggplot(data= .,aes(x=n_snps,y=NEA_all)) +
+  facet_wrap(~round(ave_cov,2),scales = "free_x") +
+  #geom_bin2d(bins = 70) +
+  #scale_fill_continuous(type = "viridis") +
+  geom_point(alpha=0.05,volor="grey") +
+  geom_smooth(method = "lm") +
+  stat_cor(method = "pearson",label.x = 10,size=4,face="bold") +
+  THEME +
+  coord_cartesian(expand = F) +
+  xlab("# SNP per bin") +
+  ylab("Posterior probability for Neandertal ancestry in bin") +
+  ggtitle("Loschbour")
+
+
+P_n_snp_NEA_pp_cor <- ggpubr::ggarrange(LB_n_snp_NEA_pp_cor,UI_n_snp_NEA_pp_cor,labels = c("A","B"),common.legend = T,legend = "bottom")
+
+ggsave(paste(folder_path,"Supplement/P_n_snp_NEA_pp_cor.png",sep=""),P_n_snp_NEA_pp_cor,device = "png",height = 6,width = 14)
+```
+
+### check WGS vs capture using Kostenki14
+
+```{r warnings=F,message=F,echo=F}
+## Compare Kostenki14 capture vs. shotgun
+
+get_est_from_true_pos <- function(true_row, est){
+  #       t0------t1
+  #    e0----e1
+  #            e0----e1
+  #   e0---------------e1
+  #         e0-e1
+  overlap = est %>% filter(pos<true_row$pos_end, 
+                           pos_end > true_row$pos,
+                           chrom == true_row$chrom
+  )
+  n_overlap = nrow(overlap)
+  suppressWarnings({
+    est_start = min(overlap$pos)
+    est_end = max(overlap$pos_end)
+    #est_src = dplyr::first(overlap$target)
+    est_map_start =  min(overlap$map)
+    est_map_end =  min(overlap$map_end)
+    #ids = list(overlap$id)
+    est_gap = max(overlap$pos_end) - min(overlap$pos) - 
+      sum(overlap$pos_end - overlap$pos)
+    est_gap_map = max(overlap$map_end) - min(overlap$map) - 
+      sum(overlap$map_end - overlap$map)
+    est_frag_ID <- as.character(paste(as.character(overlap$frag_ID),collapse = ","))
+  })
+  
+  df = tibble(n_overlap, est_start, est_end, est_gap,est_map_start,est_map_end,est_gap_map,est_frag_ID)
+  df[df$n_overlap == 0] = 0
+  df$est_frag_ID = as.character(ifelse(df$est_frag_ID == 0,NA,est_frag_ID))
+  #df$est_ids = ids
+  #if(is.null(df$est_ids[[1]]))df$est_ids = lapply(1:nrow(df), function(x)tibble(est_ids=integer()))
+  
+  
+  
+  df$est_target = dplyr::first(overlap$target)
+  
+  df
+}
+
+get_snps_of_frag <- function(frag_x,snp){
+  frag_snps = snp %>% 
+    filter(chrom==min(frag_x$chrom), 
+           pos>=min(frag_x$pos) , 
+           pos < max(frag_x$pos_end) ) 
+  n_snps = nrow(frag_snps)
+  df = tibble(n_snps)
+  return(df)
+}
+
+K14_shotgun_bin <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Kostenki14Shotgun_archaicadmixtureAPX.bin.xz") %>% 
+  mutate(Data = "Shotgun",Cov = 2.52,covered = ifelse(n_snps > 0, 1,0))
+
+K14_capture_bin <-  read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Kostenki14AA_archaicadmixtureAPX.bin.xz") %>% 
+  mutate(Data = "Capture",Cov = 16.1,covered = ifelse(n_snps > 0, 1,0))
+
+Kostenki_covered <- inner_join(K14_shotgun_bin[,c("chrom","map","pos","id","n_snps","covered")],
+                               K14_capture_bin[,c("chrom","map","pos","id","n_snps","covered")],by = c("chrom","map")) %>%
+  mutate(covered = ifelse(covered.x == 1 & covered.y == 1,"both",
+                          ifelse(covered.x == 1 & covered.y == 0,"only_Shotgun",
+                                 ifelse(covered.x == 0 & covered.y == 1,"only_Capture","none")) ))
+
+K14_shotgun_snp <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Kostenki14Shotgun_archaicadmixtureAPX.snp.xz") %>% 
+  mutate(Data = "Shotgun",Cov = 2.52)
+K14_shotgun_snp$GT = apply(K14_shotgun_snp[,c('G1', 'G2', 'G0')], 1, function(x) names(x)[which.max(x)])
+
+K14_capture_snp <-  read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/admixfrog/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Kostenki14AA_archaicadmixtureAPX.snp.xz") %>% 
+  mutate(Data = "Capture",Cov = 16.1)
+K14_capture_snp$GT = apply(K14_capture_snp[,c('G1', 'G2', 'G0')], 1, function(x) names(x)[which.max(x)])
+
+
+K14_SNP_comparison <- inner_join(K14_shotgun_snp,K14_capture_snp,by=c("chrom","pos"))
+
+GT_agree <- K14_SNP_comparison %>% filter(GT.x == GT.y) %>% nrow()
+
+GT_agree_percent <- GT_agree / nrow(K14_SNP_comparison)
+
+cor(K14_SNP_comparison$p.x,K14_SNP_comparison$p.y)
+
+
+K14_shotgun <- read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Kostenki14Shotgun_archaicadmixtureAPX.rle0.25.xz.anno_all_types") %>% 
+  mutate(Data = "Shotgun",Cov = 2.52) %>% 
+  filter(type == "state", target != "AFR")
+
+K14_capture <-  read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/rle/error2/length_bin_15/5000/AFR-NEA-DEN/Shared_Map/Kostenki14AA_archaicadmixtureAPX.rle0.25.xz.anno_all_types") %>% 
+  mutate(Data = "Capture",Cov = 16.1) %>% 
+  filter(type == "state", target != "AFR")
+
+K14_shotgun = K14_shotgun %>% rowwise %>%
+  do(X=get_est_from_true_pos(true_row=., est=K14_capture)) %>%
+  unnest(X) %>% bind_cols(K14_shotgun) 
+
+K14_shotgun$n_snp_shotgun = K14_shotgun %>% rowwise %>%
+  do(X=get_snps_of_frag(frag_x=., snp=K14_shotgun_snp)) %>%
+  unnest(X) %>% .$n_snps
+
+K14_shotgun$n_snp_capture = K14_shotgun %>% rowwise %>%
+  do(X=get_snps_of_frag(frag_x=., snp=K14_capture_snp)) %>%
+  unnest(X) %>% .$n_snps
+
+K14_shotgun_filtered <- K14_shotgun %>% filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient) 
+
+K14_capture = K14_capture %>% rowwise %>%
+  do(X=get_est_from_true_pos(true_row=., est=K14_shotgun)) %>%
+  unnest(X) %>% bind_cols(K14_capture) 
+
+K14_capture$n_snp_shotgun = K14_capture %>% rowwise %>%
+  do(X=get_snps_of_frag(frag_x=., snp=K14_shotgun_snp)) %>%
+  unnest(X) %>% .$n_snps
+
+K14_capture$n_snp_capture = K14_capture %>% rowwise %>%
+  do(X=get_snps_of_frag(frag_x=., snp=K14_capture_snp)) %>%
+  unnest(X) %>% .$n_snps
+
+K14_capture_filtered <- K14_capture %>% filter(map_len >= min_len_ancient, pos_len >= min_bp_len_ancient) 
+
+Fragment_plot_list <-  unique(c(unlist(str_split(K14_capture_filtered$est_frag_ID,",")),unlist(str_split(K14_shotgun_filtered$est_frag_ID,",")),K14_capture_filtered$frag_ID,K14_shotgun_filtered$frag_ID))
+
+Kostenki_Test_all_segs <- rbind(K14_shotgun[K14_shotgun$frag_ID %in% Fragment_plot_list,],K14_capture[K14_capture$frag_ID %in% Fragment_plot_list,])
+
+
+P_Kostenki_calling_comparison <- ggplot() +
+  geom_rect(data = Kostenki_Test_all_segs[Kostenki_Test_all_segs$Data == "Shotgun" & Kostenki_Test_all_segs$map_len >= 0.2,], 
+            mapping = aes(xmin = map, xmax = map_end, ymin = -0.5, ymax = 0), 
+            fill = "#0000FF", color = "#0000FF") +
+  geom_rect(data = Kostenki_Test_all_segs[Kostenki_Test_all_segs$Data == "Shotgun" & Kostenki_Test_all_segs$map_len < 0.2,], 
+            mapping = aes(xmin = map, xmax = map_end, ymin = -0.5, ymax = 0), 
+            fill = "#75D3FF", color = "#75D3FF") +
+  geom_rect(data = Kostenki_Test_all_segs[Kostenki_Test_all_segs$Data == "Capture"& Kostenki_Test_all_segs$map_len >= 0.2,], 
+            mapping = aes(xmin = map, xmax = map_end, ymin = 0, ymax = 0.5), 
+            fill = "#D2293D", color = "#D2293D") +
+  geom_rect(data = Kostenki_Test_all_segs[Kostenki_Test_all_segs$Data == "Capture"& Kostenki_Test_all_segs$map_len < 0.2,], 
+            mapping = aes(xmin = map, xmax = map_end, ymin = 0, ymax = 0.5), 
+            fill = "#FFAC75", color = "#FFAC75") +
+  facet_wrap(~chrom, ncol=1, strip='left') +
+  theme_bw() +
+  theme(
+    legend.position="none",
+    axis.title.y=element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()) +
+  xlab('Genomic position (cM)')
+
+ggsave(paste0(folder_path_save,"P_Kostenki_calling_comparison.png"),P_Kostenki_calling_comparison,device = "png",width = 12,height = 10)
+
+#### check segment length
+
+P_Kostenki_length <- Kostenki_Test_all_segs %>% 
+  filter(map_len >= 0.2) %>%
+  group_by(Data) %>% 
+  mutate(rank_length = rank(-(map_len),ties.method = "random")) %>%
+  ggplot(.,aes(x =  map_len , y = log(rank_length), col = Data,shape=Data)) +
+  geom_point(alpha= 0.7,size = 3) +
+  THEME +
+  coord_cartesian(expand = F) +
+  geom_vline(xintercept = 0.002,linetype = "dotted") +
+  xlab("Segment length in centMorgan") +
+  ylab("segments ranked by size (log scaled)") +
+  labs(col='Data')
+
+ggsave(paste0(folder_path_save,"P_Kostenki_length_comparison.png"),P_Kostenki_length,device = "png",width = 12,height = 10)
+
+
+Kostenki_Test_all_segs %>% group_by(Data) %>% summarize(t_admix_gen = (1/mean(((map_len - 0.2) / 100))),
+                                                        t_admix_years = (1/mean(((map_len - 0.2) / 100))) * 28)
+
+#### check ACov
+
+KostenkiShotgun_ACov <- read.table("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/Shared_Map_moorjani_et_al/outfiles_Kostenki14Shotgun/Kostenki14Shotgun") %>%
+  dplyr::rename(dist = V1, wcov =  V2) %>% mutate(Data = "Shotgun") %>% filter(dist >= 0.02)
+KostenkiShotgun_ACov_fit <- Simple_Single_Pulse_ALD_fn(KostenkiShotgun_ACov,50,2000)
+KostenkiAA_ACov <- read.table("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/EMH_dating_analysis/Shared_Map_moorjani_et_al/outfiles_Kostenki14AA/Kostenki14AA") %>%
+  dplyr::rename(dist = V1, wcov =  V2) %>% mutate(Data = "Capture") %>% filter(dist >= 0.02)
+KostenkiAA_ACov_fit <- Simple_Single_Pulse_ALD_fn(KostenkiAA_ACov,50,2000)
+
+KostenkiACov <- rbind(KostenkiShotgun_ACov,KostenkiAA_ACov)
+
+KostenkiACov_data_lables <- data.frame(lable = paste0("Admixture time before sample Shotgun (gen): ",328," \u00b1 ",9,"\n",
+                                                      "Admixture time before sample Capture (gen): ",315," \u00b1 ",10,"\n"))
+
+P_Kostenki_comp_coancestry = ggplot(KostenkiACov,aes(x=dist,y=wcov,col=Data)) +
+  geom_point() +
+  geom_line(data = KostenkiShotgun_ACov_fit[[4]],aes(x=dist_M*100,y=ALD),color="black",linetype = "dashed",size=1.2,alpha=1) +
+  geom_line(data = KostenkiAA_ACov_fit[[4]],aes(x=dist_M*100,y=ALD),color="black",size=1.2,alpha=1) +
+  xlab("Distance (cM)") +
+  ylab("Ancestry covariance") +
+  THEME +
+  geom_text(
+    data    = KostenkiACov_data_lables,
+    mapping = aes(x = 0.2, y = 0.12, label = lable),
+    col="black",
+    size=3,
+    alpha = 1,
+    fontface = "bold",
+    vjust = "inward",
+    hjust = "inward")
+
+## plot comparison like all other QC
+
+# manually run the fragment_calling_comparison.R script with Kostenki14Shotgun as true and Capture as est
+maxLen = 2
+n_breaks = 30
+
+K14_calling_comparison = read.table("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/TestLineageAssignment_Shared_Map/Fragment_Calling_Comparison_Kostenki14_Shotgun_vs_Capture.csv",sep = ",",header=T)
+
+K14_calling_comparison_filtered = K14_calling_comparison %>%  
+  mutate(map_len = map_end - map_start,est_map_len = est_map_end - est_map_start) %>% 
+  mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))  %>% filter(map_len2 <= maxLen,chrom != "X") 
+
+n_breaks_L = round(n_breaks * (max(K14_calling_comparison_filtered$map_len,na.rm = T)/2))
+
+K14_calling_comparison_filtered %>%
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2)   %>% 
+  mutate(CLS = ifelse(CLS == "TP","Match",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FP","Missing in Reference",CLS)) %>%
+  mutate(CLS = ifelse(CLS == "FN","Missing in Test",CLS))   -> Plot_data
+
+Plot_data$CLS <- factor(Plot_data$CLS, levels=c("Missing in Test", "Missing in Reference", "GAP","MERGED","Match"))
+
+
+P_K14_Shotgun_vs_capture_seg_call_comparison  <- Plot_data %>% 
+  ggplot(., aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) +
+  geom_bar(position="fill", stat="identity") +
+  THEME +
+  theme(panel.margin.y=unit(1,"lines"),
+        legend.position = "bottom") +
+  guides(fill=guide_legend(nrow=2, byrow=TRUE)) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data$map_len_bin)),0.5)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") 
+#ggtitle("Kostenki14 Shotgun vs. Capture")
+
+ggsave(paste0(folder_path_save,"P_K14_Shotgun_vs_capture_seg_call_comparison.png"),P_K14_Shotgun_vs_capture_seg_call_comparison,device = "png",width = 8,height = 6)
+
+P_KostenkiQC <- ggpubr::ggarrange(P_K14_Shotgun_vs_capture_seg_call_comparison,
+                                  P_Kostenki_length,
+                                  P_Kostenki_comp_coancestry,ncol=3,labels = c("A","B","C"),legend = "bottom")
+
+ggsave(paste0(folder_path_save,"P_K14_Shotgun_vs_capture_QC.png"),P_KostenkiQC,device = "png",width = 14,height = 6)
+
+### Ascertainment difference in length
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/CovAscParamerror2/Shared_Map/Updated/Loschbour_TruePenalty_0.25_TrueAsc_ArchaicPlusUnfiltered_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+P_Loschbour_asc_down_seg_length_data <- res_obs %>% filter(Test_status != "true",Obs_penalty == 0.25,map_len >= 0.2,Obs_map == "Shared_Map") %>% 
+  group_by(Obs_Ascertainment,Obs_downsampling) %>% 
+  mutate(rank_length = rank(-(map_len),ties.method = "random")) %>%
+  top_n(n = 100, wt = map_len) %>%
+  mutate(sample = "Loschbour",cov = as.factor(round(Obs_downsampling*ave_cov$ave_cov_array,2)))
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/CovAscParamerror2/Shared_Map/Updated/UstIshim_TruePenalty_0.25_TrueAsc_ArchaicPlusUnfiltered_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+P_UI_asc_down_seg_length_data <- res_obs %>% filter(Test_status != "true",Obs_penalty == 0.25,map_len >= 0.2,Obs_map == "Shared_Map") %>% 
+  group_by(Obs_Ascertainment,Obs_downsampling) %>% 
+  mutate(rank_length = rank(-(map_len),ties.method = "random")) %>%
+  top_n(n = 100, wt = map_len) %>%
+  mutate(sample = "Ust'Ishim",cov = as.factor(round(Obs_downsampling*ave_cov$ave_cov_array,2)))
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/CovAscParamerror2/Shared_Map/Updated/HGDPFrench_TruePenalty_0.25_TrueAsc_ArchaicPlusUnfiltered_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+P_French_asc_down_seg_length_data <- res_obs %>% filter(Test_status != "true",Obs_penalty == 0.25,map_len >= 0.2,Obs_map == "Shared_Map") %>% 
+  group_by(Obs_Ascertainment,Obs_downsampling) %>% 
+  mutate(rank_length = rank(-(map_len),ties.method = "random")) %>%
+  top_n(n = 100, wt = map_len) %>%
+  mutate(sample = "HGDP French",cov = as.factor(round(Obs_downsampling*30,2)))
+
+load("~/EMH_Introgression_Project/Introgression_Detection/NewTechnicalValidations/Checking_Ancestry_info_newREF_admixfrog0.7/CompFigures/CovAscParamerror2/Shared_Map/Updated/HGDPHan_TruePenalty_0.25_TrueAsc_ArchaicPlusUnfiltered_TrueAfp_error2_TrueMapShared_Map_ObsPenalty_0.25.RData")
+
+P_Han_asc_down_seg_length_data <- res_obs %>% filter(Test_status != "true",Obs_penalty == 0.25,map_len >= 0.2,Obs_map == "Shared_Map") %>% 
+  group_by(Obs_Ascertainment,Obs_downsampling) %>% 
+  mutate(rank_length = rank(-(map_len),ties.method = "random")) %>%
+  top_n(n = 100, wt = map_len) %>%
+  mutate(sample = "HGDP Han",cov = as.factor(round(Obs_downsampling*30,2)))
+
+P_asc_down_seg_length <- rbind(P_Loschbour_asc_down_seg_length_data,P_UI_asc_down_seg_length_data,
+                               P_French_asc_down_seg_length_data,P_Han_asc_down_seg_length_data) %>%
+  ggplot(.,aes(x =  map_len , y = log(rank_length), col = Obs_Ascertainment,shape=Obs_Ascertainment)) +
+  facet_wrap(sample~cov,scales = "free_x",ncol = 6) +
+  geom_point(alpha= 0.7,size = 3) +
+  THEME +
+  #geom_smooth(method = "lm") +
+  coord_cartesian(expand = T) +
+  geom_vline(xintercept = 0.2,linetype = "dotted") +
+  xlab("Segment length in centMorgan") +
+  ylab("segments ranked by size (log scaled)") +
+  labs(col='Ascertainment',shape='Ascertainment ')
+```
+
+### hmmix vs. admixfrog com to true
+
+```{r warning=FALSE,message=FALSE,echo=F}
+library(magick)
+demo_sim <- image_read_svg('~/EMH_Introgression_Project/Introgression_Detection/Revisions_Figures_and_Data/Simple_model_paper_stdpopsim_EVA_new.svg')
+
+demo_sim <- image_background(demo_sim, "white")
+
+sim_image1 <- grid::rasterGrob(as.raster(demo_sim))
+
+sim_image <- ggplot() + annotation_custom(sim_image1, -Inf, Inf, -Inf, Inf)+ 
+    theme(plot.background = element_rect(fill = 'white'), panel.background = element_rect(fill = 'white'))
+
+res_compareOG = read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/Simulations/RevisionSimulationswithDEN/comparison/SBasic/Ten_PD/admixforg_paramsAll_Archaics/Fixed_asc/NEA/ComparisonTestPDwithDenintro.rle0.25.minlen0.cutoff0.8.matchedMatchedfrag_comp_res.csv")
+n_breaks = 100
+res_compare = res_compareOG %>% 
+  mutate(map_len = map_end - map_start) %>% 
+  mutate(est_map_len = est_map_end - est_map_start) %>%
+  mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))
+
+n_breaks_L = round(n_breaks * (max(res_compare$map_len,na.rm = T)/2))
+
+
+res_compare %>%  
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2) %>%
+  filter(!(CLS == "FP" & est_target == "DEN")) %>%
+  mutate(CLS = ifelse(CLS == "OVERLAP","TP",CLS)) %>%
+  mutate(CLS = ifelse(!is.na(source) & source == "NEA" & est_target == "DEN","SRC",CLS)) %>%
+  mutate(true_source = "NEA")-> Plot_data_NEA
+
+res_compareOG = read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/Simulations/RevisionSimulationswithDEN/comparison/SBasic/Ten_PD/admixforg_paramsAll_Archaics/Fixed_asc/DEN/ComparisonTestPDwithDenintro.rle0.25.minlen0.cutoff0.8.matchedMatchedfrag_comp_res.csv")
+n_breaks = 100
+res_compare = res_compareOG %>% 
+  mutate(map_len = map_end - map_start) %>% 
+  mutate(est_map_len = est_map_end - est_map_start) %>%
+  mutate(map_len2=ifelse(!is.na(map_len),map_len,est_map_len))
+
+n_breaks_L = round(n_breaks * (max(res_compare$map_len,na.rm = T)/2))
+
+
+res_compare %>%  
+  mutate(map_len_bin = cut(map_len2, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2) %>%
+  filter(!(CLS == "FP" & est_target == "NEA")) %>%
+  mutate(CLS = ifelse(CLS == "OVERLAP","TP",CLS)) %>%
+  mutate(CLS = ifelse(!is.na(source) & source == "DEN" & est_target == "NEA","SRC",CLS)) %>%
+  mutate(true_source = "DEN") -> Plot_data_DEN
+
+Plot_data <- rbind(Plot_data_DEN,Plot_data_NEA)
+
+
+P_hmmix_vs_admixfrog_calling_disregarding_haplotype_NEA  <- 
+  ggplot(Plot_data_NEA, aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) + 
+  facet_grid(true_source~method,scales = 'free_x')+
+  geom_bar(position="fill", stat="identity") +
+  THEME +
+  theme(legend.position = "bottom") +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_NEA$map_len_bin)),0.5)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes")
+
+P_hmmix_vs_admixfrog_calling_disregarding_haplotype_DEN  <- 
+  ggplot(Plot_data_DEN, aes(fill=CLS, y=map_len2,x=map_len_bin_mean)) + 
+  facet_grid(true_source~method,scales = 'free_x')+
+  geom_bar(position="fill", stat="identity") +
+  THEME +
+  theme(legend.position = "bottom") +
+  theme(panel.margin.y=unit(1,"lines")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_continuous(breaks=seq(0,max(as.numeric(Plot_data_DEN$map_len_bin)),0.5)) +
+  xlab("Genetic length in cM")+
+  ylab("Proportion of segment classes") 
+
+P_hmmix_vs_admixfrog_calling_disregarding_haplotype <- ggpubr::ggarrange(P_hmmix_vs_admixfrog_calling_disregarding_haplotype_NEA,
+                                                                         P_hmmix_vs_admixfrog_calling_disregarding_haplotype_DEN,
+                                                                         ncol = 2,common.legend = T,legend = "bottom")
+
+P_hmmix_vs_admixfrog_Precision_Sensitivity <- Plot_data %>% 
+  mutate(CLS = ifelse(CLS == "OVERLAP","TP",ifelse(CLS == "GAP","TP",ifelse(CLS == "MERGED","TP",CLS)))) %>%
+  group_by(map_len_bin_mean,method,true_source) %>% 
+  summarize(Precision = sum(CLS == 'TP') / (sum(CLS == 'TP') + sum(CLS == 'FP')),
+            Sensitivity = sum(CLS == 'TP') / (sum(CLS == 'TP') + sum(CLS == 'FN')) ) %>%
+  pivot_longer(c(Precision,Sensitivity), names_to = "stat", values_to = "values") %>%
+  ggplot(.,aes(x = map_len_bin_mean,y = values,col=method)) +
+  facet_grid(true_source ~ stat) +
+  geom_point() +
+  geom_line() +
+  THEME +
+  theme(legend.position = "bottom") +
+  xlab("Genetic length in cM")+
+  ylab("Precision / Sensitivity")
+
+true_input = list.files(path = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/Simulations/RevisionSimulationswithDEN/Truth/SBasic/",pattern = "All_TrueSegmentsAnnotated_Ten_PD.",full.names = T)
+rle_admixfrog = list.files(path = "/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/Simulations/RevisionSimulationswithDEN/rle/SBasic/admixforg_paramsAll_Archaics/",pattern = "",full.names = T)
+
+true <- list()
+x = 1
+for(i in 1:length(true_input)){
+  for(j in 1:10){
+    true[[x]] <- read.csv(true_input[i]) %>% filter(sample_name == paste0("target",j-1)) %>%
+      mutate(chrom = as.character(chrom),map = start*1e-6, map_end = end * 1e-6,pos = start, pos_end = end) %>%
+      mutate(map_len = map_end - map,pos_len = pos_end - pos) %>% mutate(sim = x) %>% mutate(target = source)
+    x = x + 1
+  }
+}
+true <- do.call('rbind',true)
+
+true_red = true %>% dplyr::select(chrom,map_len,sim,target) %>% mutate(Data = "Simulation")
+
+admixfrog_rle <- list()
+for(i in 1:length(rle_admixfrog)){
+  admixfrog_rle[[i]] <- read.csv(rle_admixfrog[i]) %>%
+    filter(type == "state",target != "AFR") %>% mutate(chrom = paste0("chr",chrom)) %>%
+    mutate(chrom = as.character(chrom),map = pos*1e-6, map_end = pos_end * 1e-6) %>%
+    mutate(map_len = map_end - map) %>% mutate(sim = i)
+}
+admixfrog_rle <- do.call('rbind',admixfrog_rle)
+
+admixfrog_rle_red = admixfrog_rle %>% dplyr::select(chrom,map_len,sim,target) %>% mutate(Data = "admixfrog")
+
+hmmix_rle <- list()
+x = 1
+for(i in 1:10){
+  for(j in 1:10){
+    hmmix_rle[[x]] <- read.csv(paste0("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/Simulations/RevisionSimulationswithDEN/hmmix/SBasic/Ten_PD/",i-1,"/Decode/Ind_",j-1,".cutoff0.8.matched.csv")) %>%
+      filter(target != "unknown") %>%
+      mutate(chrom = as.character(chrom),map = start*1e-6, map_end = end * 1e-6,pos = start, pos_end = end) %>%
+      mutate(map_len = map_end - map,pos_len = pos_end - pos) %>%
+      rownames_to_column(.,"id") %>% mutate(sim = x)
+    x = x + 1
+  }
+}
+hmmix_rle <- do.call('rbind',hmmix_rle)
+
+hmmix_rle_red = hmmix_rle  %>% dplyr::select(chrom,map_len,sim,target) %>% mutate(Data = "hmmix")
+
+
+Sim_seg_data <- rbind(true_red,admixfrog_rle_red,hmmix_rle_red) 
+
+
+
+P_hmmix_admixfrog_seg_len_log_dens <- Sim_seg_data %>% filter(map_len <= 0.4) %>%
+  ggplot(aes(x = map_len, col = Data)) +
+  facet_grid(~target) +
+  geom_density() +
+  scale_y_continuous(trans = "log2") + # This log2 transforms the y-axis
+  xlab("Genetic length in cM")+
+  ylab("log density") +
+  THEME +
+  theme(legend.position = "bottom") +
+  coord_cartesian(expand = T) 
+
+P_hmmix_vs_admixfrog_sim <- ggpubr::ggarrange(P_hmmix_vs_admixfrog_calling_disregarding_haplotype,ggpubr::ggarrange(P_hmmix_vs_admixfrog_Precision_Sensitivity,P_hmmix_admixfrog_seg_len_log_dens,ncol = 2,labels = c("B","C")),nrow = 2,labels = c("A",""))
+
+ggsave(paste(folder_path,"Supplement/P_hmmix_vs_admixfrog_sim.png",sep=""),P_hmmix_vs_admixfrog_sim,device = "png",height = 8,width = 12)
+
+```
+
+### hmmix vs. admixfrog com between
+
+```{r warning=FALSE,message=FALSE,echo=F}
+res_compareOG_between = read.csv("/mnt/diversity/leonardo_iasi/EMH_Introgression_Project/Simulations/RevisionSimulationswithDEN/comparison/SBasic/Ten_PD/admixforg_paramsAll_Archaics/Fixed_asc/DEN/BetweenComparisonTestPDwithDenintro.rle0.25.minlen0.cutoff0.8.matchedMatchedfrag_comp_res.csv")
+
+res_compareOG_between_overal_summary <- res_compareOG_between %>%
+  group_by(target) %>% 
+  summarize(n_segs_detected = sum(n_overlap > 0),
+            n_segs = n(),
+            bb_detected = sum(ifelse(n_overlap > 0, pos_len, 0)),total_bp = sum(pos_len)) %>%
+  mutate(prop_segs_detected = n_segs_detected / n_segs, prop_bp_detected = bb_detected / total_bp)
+
+n_breaks = 100
+
+res_compareOG_between$map_len <- res_compareOG_between$pos_len * 1e-6
+
+n_breaks_L = round(n_breaks * (max(res_compareOG_between$map_len,na.rm = T)/2))
+
+
+res_compareOG_between_sum <- res_compareOG_between %>%  group_by(target) %>%
+  mutate(map_len_bin = cut(map_len, breaks = n_breaks_L),
+         map_len_bin_temp = gsub(pattern = "\\(|\\[|\\)|\\]", replacement = "", map_len_bin)) %>% 
+  separate(col = map_len_bin_temp,into= c("lwr","upr"),sep=",") %>%
+  mutate(map_len_bin_mean = (as.numeric(lwr)+as.numeric(upr))/2) %>% ungroup() %>% 
+  group_by(target,map_len_bin_mean) %>% 
+  summarize(n_segs_detected = sum(n_overlap > 0),
+            n_segs = n(),
+            bb_detected = sum(ifelse(n_overlap > 0, pos_len, 0)),total_bp = sum(pos_len)) %>%
+  mutate(prop_segs_detected = n_segs_detected / n_segs, prop_bp_detected = bb_detected / total_bp)
+
+P_comp_between_hmmix_admxfrg_NEA <- res_compareOG_between_sum %>% dplyr::select(target,map_len_bin_mean,prop_segs_detected,prop_bp_detected) %>%
+  pivot_longer(c(prop_segs_detected,prop_bp_detected),names_to = "metric",values_to = "est") %>%
+  filter(target == "NEA") %>%
+  ggplot(.,aes(x=map_len_bin_mean,y=est,fill=metric)) +
+  facet_grid(~target) +
+  geom_col(position = "dodge") +
+  THEME +
+  coord_cartesian(expand = F,ylim = c(0.4,1.1)) +
+  xlab("Genetic length in cM") +
+  ylab("Proportion detected") 
+
+P_comp_between_hmmix_admxfrg_DEN <- res_compareOG_between_sum %>% dplyr::select(target,map_len_bin_mean,prop_segs_detected,prop_bp_detected) %>%
+  pivot_longer(c(prop_segs_detected,prop_bp_detected),names_to = "metric",values_to = "est") %>%
+  filter(target == "DEN") %>%
+  ggplot(.,aes(x=map_len_bin_mean,y=est,fill=metric)) +
+  facet_grid(~target) +
+  geom_col(position = "dodge") +
+  coord_cartesian(expand = F,ylim = c(0.4,1.1)) +
+  THEME +
+  xlab("Genetic length in cM") +
+  ylab("Proportion detected") 
+
+P_comp_between_hmmix_admxfrg <- ggpubr::ggarrange(P_comp_between_hmmix_admxfrg_NEA,P_comp_between_hmmix_admxfrg_DEN,
+                                                  ncol = 2,common.legend = T,legend = "bottom")
+
+ggsave(paste(folder_path,"Supplement/P_hmmix_vs_admixfrog_sim_comparison_between.png",sep=""),P_comp_between_hmmix_admxfrg,device = "png",height = 4,width = 8)
+
+#### all together
+
+P_hmmix_vs_admixfrog_sim_all <- ggpubr::ggarrange(ggpubr::ggarrange(sim_image,P_comp_between_hmmix_admxfrg,ncol = 2,labels = c("A","B")),P_hmmix_vs_admixfrog_calling_disregarding_haplotype,ggpubr::ggarrange(P_hmmix_vs_admixfrog_Precision_Sensitivity,P_hmmix_admixfrog_seg_len_log_dens,ncol = 2,labels = c("D","E")),nrow = 3,labels = c("","C",""))
+
+ggsave(paste(folder_path,"Supplement/P_hmmix_vs_admixfrog_sim_comparison_all.png",sep=""),P_hmmix_vs_admixfrog_sim_all,device = "png",height = 14,width = 12,bg = "white")
+
+```
+
+# Ancestry estimates
+
+## Comparison Admixfrog posterior ancestry estimates vs f4 ratios for Neandertal ancestry
+
+```{r message=FALSE, echo=F, warning=FALSE, results = 'hide'}
+
+Joint_Meta_long_autosomes <- rbind(Joint_Meta_long[Joint_Meta_long$ancestry_method == "admixfrog",],Joint_Meta_long[Joint_Meta_long$data %in% c("all_autosomes","deam_autosomes"),])
+
+P_Ancestry_estimates_SGDP <- Joint_Meta_long_autosomes %>% filter(ML_BP_Mean == 0) %>%
+  filter(Ancestry=="NEA",ascertainment =="AAX")  %>% group_by((!!sym(cluster_used)),ancestry_method,data) %>% dplyr::summarize(count = n(),
+                     mean = mean(estimate, na.rm = TRUE), 
+                     sd = sd(estimate, na.rm = TRUE),
+                     min = min(estimate),
+                     max = max(estimate)) %>%
+  ggplot(.,aes(x=get(cluster_used),y=mean,fill=ancestry_method))+
+                              geom_bar(position=position_dodge(), stat="identity") +
+                              geom_errorbar(aes(ymin=ifelse(mean-sd>=0,mean-sd,0), ymax=mean+sd), width=.1,colour="black",position=position_dodge(.9)) +
+                              THEME +
+                              theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+                              scale_y_continuous(expand = c(0, 0), limits = c(0, 0.04))+
+                              xlab("")+
+                              ylab("Estimated Neandertal ancestry") +
+  labs(fill='Ancestry method')
+
+P_Ancestry_estimates_EMH <- Joint_Meta_long_autosomes %>% filter(ML_BP_Mean > 0) %>%
+  filter(Ancestry=="NEA",ascertainment =="AAX")  %>% group_by((!!sym(cluster_used)),ancestry_method,data) %>% dplyr::summarize(count = n(),
+                     mean = mean(estimate, na.rm = TRUE), 
+                     sd = sd(estimate, na.rm = TRUE),
+                     min = min(estimate),
+                     max = max(estimate)) %>%
+  mutate(ancestry_method_2 = ifelse(data == "deam_autosomes","f4r_deam",ancestry_method)) %>%
+  ggplot(.,aes(x=get(cluster_used),y=mean,fill=ancestry_method_2))+
+                              geom_bar(position=position_dodge(), stat="identity") +
+   geom_errorbar(aes(ymin=ifelse(mean-sd>=0,mean-sd,0), ymax=mean+sd),
+                 position=position_dodge(0.9), width=.1, size = 1)+
+                              THEME +
+                              theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+                              scale_y_continuous(expand = c(0, 0), limits = c(0, 0.07))+
+                              scale_color_manual(values=c('black','lightgrey'))+
+                              xlab("")+
+                              ylab("Estimated Neandertal ancestry") +
+  scale_fill_manual(values = c("admixfrog" = "#F8766D",
+                               "f4r" = "#00BFC4",
+                               "f4r_deam" = "#7CAE00",
+                               "f4r_gtLH" = "#C77CFF")) +
+  labs(fill='Ancestry method')
+
+#ggsave(paste(folder_path,"/P_Ancestry_estimates_SGDP.png",sep=""),P_Ancestry_estimates_SGDP)
+#ggsave(paste(folder_path,"/P_Ancestry_estimates_EMH.png",sep=""),P_Ancestry_estimates_EMH)
+
+P_ancestry_ests <- grid.arrange(P_Ancestry_estimates_SGDP, P_Ancestry_estimates_EMH, ncol = 2)
+#ggsave(paste(folder_path,"/P_ancestry_ests.png",sep=""),P_ancestry_ests,device = "png",height = 10,width = 12)
+```
+
+Admixfrog slightly overestimates the total ancestry. This is very likely due to the fact that admixfrog reports the total Neandertal ancestry, i.e. due to introgression and ILS, whereas the f4 ratio test, in principle, tells these two causes of Neandertal ancestry apart.
+
+## stratified ancestry
+
+
+```{r message=FALSE, echo=F, warning=FALSE, results = 'hide'}
+
+### PP vs f4r
+Fitting_Data = Joint_Meta %>% filter(ML_BP_Mean > 0) %>% filter(sample_name %notin% c("BKBB7240","BKCC7335","BKF6620","OaseNew","UstIshim","LeangPanninge"))
+
+
+P_ancestry_SP_f4r_without_Africans_AAX <- Joint_Meta  %>% filter(SGDP_Superpop != "Africa") %>% 
+  mutate(fit = ifelse(sample_name %in% c("BKBB7240","BKCC7335","BKF6620","OaseNew","UstIshim"),"No","Yes")) %>%
+  ggplot(., aes(x = -ML_BP_Mean, y = estimate_all_f4r_NEA_autosomes),lable=sample_name) + 
+              geom_point() +
+              stat_smooth(method = "lm",data = Fitting_Data,col = "#009999", size = 1) + 
+              xlab("Sample time (BP)")+
+              ylab("Neandertal ancestry direct f4 AA+X") +
+              coord_cartesian(ylim = c(0,0.09) )+ 
+              geom_text(aes(label=ifelse(estimate_all_f4r_NEA>0.03,sample_name,""),colour = fit),hjust=0, vjust=0) +
+              geom_text(aes(label=ifelse(sample_name == "LeangPanninge",sample_name,""),colour = "orange"),hjust=0, vjust=0) +
+              scale_color_manual(values=c("red","orange", "#009999"),name = "Included in fitting") + 
+              THEME +
+              theme(legend.position="none") +
+              stat_cor(data = Fitting_Data,method = "pearson",label.x = -45000,label.y = 0.075)
+
+P_ancestry_SP_f4r_without_Africans_1240k <- Joint_Meta  %>% filter(SGDP_Superpop != "Africa") %>% 
+  mutate(fit = ifelse(sample_name %in% c("BKBB7240","BKCC7335","BKF6620","OaseNew","UstIshim"),"No","Yes")) %>%
+  ggplot(., aes(x = -ML_BP_Mean, y = estimate_all_f4r_NEA_1240k_autosomes),lable=sample_name) + 
+              geom_point() +
+              stat_smooth(method = "lm",data = Fitting_Data,col = "#009999", size = 1) + 
+              xlab("Sample time (BP)")+
+              ylab("Neandertal ancestry direct f4 1240k") +
+              coord_cartesian(ylim = c(0,0.09) )+ 
+               geom_text(aes(label=ifelse(estimate_all_f4r_NEA>0.03,sample_name,""),colour = fit),hjust=0, vjust=0) +
+              geom_text(aes(label=ifelse(sample_name == "LeangPanninge",sample_name,""),colour = "orange"),hjust=0, vjust=0) +
+              scale_color_manual(values=c("red","orange", "#009999"),name = "Included in fitting") + 
+              THEME +
+              theme(legend.position="none") +
+              stat_cor(data = Fitting_Data,method = "pearson",label.x = -45000,label.y = 0.075)
+
+P_ancestry_AF_PP_all_without_Africans_AAX <- Joint_Meta  %>% filter(SGDP_Superpop != "Africa") %>% 
+  mutate(fit = ifelse(sample_name %in% c("BKBB7240","BKCC7335","BKF6620","OaseNew","UstIshim"),"No","Yes")) %>%
+  ggplot(., aes(x = -ML_BP_Mean, y = estimate_all_admixfrog_NEA),lable=sample_name) + 
+              geom_point() +
+              stat_smooth(method = "lm",data = Fitting_Data,col = "#009999", size = 1) + 
+              xlab("Sample time (BP)")+
+              ylab("Neandertal ancestry posterior estimate") +
+              coord_cartesian(ylim = c(0,0.09) )+ 
+              geom_text(aes(label=ifelse(estimate_all_f4r_NEA>0.03,sample_name,""),colour = fit),hjust=0, vjust=0) +
+              geom_text(aes(label=ifelse(sample_name == "LeangPanninge",sample_name,""),colour = "orange"),hjust=0, vjust=0) +
+              scale_color_manual(values=c("red","orange", "#009999"),name = "Included in fitting") + 
+              THEME +
+              theme(legend.position="none") +
+              stat_cor(data = Fitting_Data,method = "pearson",label.x = -45000,label.y = 0.075)
+
+P_ancestry_AF_PP_all_without_Africans_1240k <- Joint_Meta  %>% filter(SGDP_Superpop != "Africa") %>% 
+  mutate(fit = ifelse(sample_name %in% c("BKBB7240","BKCC7335","BKF6620","OaseNew","UstIshim"),"No","Yes")) %>%
+  ggplot(., aes(x = -ML_BP_Mean, y = estimate_all_admixfrog_NEA_1240k),lable=sample_name) + 
+              geom_point() +
+              stat_smooth(method = "lm",data = Fitting_Data,col = "#009999", size = 1) + 
+              xlab("Sample time (BP)")+
+              ylab("Neandertal ancestry posterior estimate on 1240k") +
+              coord_cartesian(ylim = c(0,0.09) )+ 
+              geom_text(aes(label=ifelse(estimate_all_f4r_NEA>0.03,sample_name,""),colour = fit),hjust=0, vjust=0) +
+              geom_text(aes(label=ifelse(sample_name == "LeangPanninge",sample_name,""),colour = "orange"),hjust=0, vjust=0) +
+              scale_color_manual(values=c("red","orange", "#009999"),name = "Included in fitting") + 
+              THEME +
+              theme(legend.position="none") +
+              stat_cor(data = Fitting_Data,method = "pearson",label.x = -45000,label.y = 0.075)
+
+## Ancestry estimates vs other params
+Fitting_Data = Joint_Meta %>% filter(ML_BP_Mean > 0) %>% filter(sample_name %notin% c("BKBB7240","BKCC7335","BKF6620","OaseNew","UstIshim","LeangPanninge"))
+
+
+P_ancestry_cov_PP_AAX <- Joint_Meta %>% filter(ML_BP_Mean > 0) %>%
+  mutate(fit = ifelse(sample_name %in% c("BKBB7240","BKCC7335","BKF6620","OaseNew","UstIshim"),"No","Yes")) %>%
+  ggplot(., aes(x = ave_cov_array, y = estimate_all_admixfrog_NEA),lable=sample_name) + 
+              geom_point() +
+              stat_smooth(method = "lm",data = Fitting_Data,col = "#009999", size = 1) + 
+              xlab("Coverage")+
+              ylab("Neandertal ancestry posterior estimate") + 
+              geom_text(aes(label=ifelse(estimate_all_f4r_NEA>0.03,sample_name,""),colour = fit),hjust=0, vjust=0) +
+              geom_text(aes(label=ifelse(sample_name == "LeangPanninge",sample_name,""),colour = "orange"),hjust=0, vjust=0) +
+              scale_color_manual(values=c("red","orange", "#009999"),name = "Included in fitting") + 
+              THEME +
+              theme(legend.position="none") +
+              stat_cor(data = Fitting_Data,method = "pearson",label.x = 0,label.y = 0.075)
+
+P_ancestry_cont_PP_AAX <- Joint_Meta %>% filter(ML_BP_Mean > 0) %>%
+  mutate(fit = ifelse(sample_name %in% c("BKBB7240","BKCC7335","BKF6620","OaseNew","UstIshim"),"No","Yes")) %>%
+  ggplot(., aes(x = ave_cont, y = estimate_all_admixfrog_NEA),lable=sample_name) + 
+              geom_point() +
+              stat_smooth(method = "lm",data = Fitting_Data,col = "#009999", size = 1) + 
+              xlab("Contamination")+
+              ylab("Neandertal ancestry posterior estimate") + 
+              geom_text(aes(label=ifelse(estimate_all_f4r_NEA>0.03,sample_name,""),colour = fit),hjust=0, vjust=0) +
+              geom_text(aes(label=ifelse(sample_name == "LeangPanninge",sample_name,""),colour = "orange"),hjust=0, vjust=0) +
+              coord_cartesian(xlim = c(0,0.5)) +
+              scale_color_manual(values=c("red","orange", "#009999"),name = "Included in fitting") + 
+              THEME +
+              theme(legend.position="none") +
+              stat_cor(data = Fitting_Data,method = "pearson",label.x = 0,label.y = 0.075)
+
+Comparison_ascertainment = ggpubr::ggarrange(P_ancestry_SP_f4r_without_Africans_AAX, P_ancestry_AF_PP_all_without_Africans_AAX,
+                                        P_ancestry_SP_f4r_without_Africans_1240k, P_ancestry_AF_PP_all_without_Africans_1240k,labels = c("A","B","C","D"),ncol = 2,nrow=2,common.legend = F)
+
+ggsave(paste(folder_path,"Supplement/P_Comparison_mean_ancestry_AAX_vs_1240k.png",sep=""),Comparison_ascertainment,device = "png",height = 10,width = 14)
+
+MandM_Sup_fig_1 = grid.arrange(  ggpubr::ggarrange(P_ancestry_SP_f4r_without_Africans_AAX,P_ancestry_SP_f4r_without_Africans_1240k, P_ancestry_AF_PP_all_without_Africans_AAX,P_ancestry_cov_PP_AAX,P_ancestry_cont_PP_AAX,labels = c("A","B","C","D","E"),ncol = 5,common.legend = F),ggpubr::ggarrange(P_Ancestry_estimates_SGDP, P_Ancestry_estimates_EMH,ncol = 2,labels = c("F","G")),layout_matrix = rbind(c(1),c(2) ))
+
+ggsave(paste(folder_path,"Supplement/P_MandM_Sup_fig_1.png",sep=""),MandM_Sup_fig_1,device = "png",height = 10,width = 14)
+
+### check correlation of sample age with
+
+Fitting_Data_with_LP = Joint_Meta %>% filter(ML_BP_Mean > 0) %>% filter(sample_name %notin% c("BKBB7240","BKCC7335","BKF6620","OaseNew","UstIshim"))
+Fitting_Data_wo_LP = Joint_Meta %>% filter(ML_BP_Mean > 0) %>% filter(sample_name %notin% c("BKBB7240","BKCC7335","BKF6620","OaseNew","UstIshim","LeangPanninge"))
+
+
+cor.test(x=Fitting_Data_wo_LP$ML_BP_Mean, y=Fitting_Data_wo_LP$ave_cont, method = 'pearson') 
+cor.test(x=Fitting_Data_wo_LP$ML_BP_Mean, y=Fitting_Data_wo_LP$ave_cont, method = 'spearman') 
+cor.test(x=Fitting_Data_wo_LP$ML_BP_Mean, y=Fitting_Data_wo_LP$ave_cov_array, method = 'pearson') 
+cor.test(x=Fitting_Data_wo_LP$ML_BP_Mean, y=Fitting_Data_wo_LP$ave_cov_array, method = 'spearman') 
+
+
+
+```
+
+## t test between Nea ancestry proportion of population clusters
+
+```{r message=FALSE, echo=F, warning=FALSE, results = 'hide'}
+Nea_est_summary <- Joint_Meta %>% group_by(clusterF3D_broad) %>% 
+  summarize(admixfrog_Nea = mean(estimate_all_admixfrog_NEA),admixfrog_Nea_sd = sd(estimate_all_admixfrog_NEA),
+            f4_AA= mean(estimate_all_f4r_NEA_autosomes),f4_AA_sd = sd(estimate_all_f4r_NEA_autosomes),
+            f4_1240 = mean(estimate_all_f4r_NEA_1240k_autosomes),f4_1240_sd = sd(estimate_all_f4r_NEA_1240k_autosomes))
+
+
+
+pairwise.t.test_NEA_ancestry_admixfrog_res <- Reshape_pairwise.t.test_PopClust_fn(pairwise.t.test_res = pairwise.t.test(Joint_Meta$estimate_all_admfrog_NEA,Joint_Meta$clusterF3D_broad),n_row = 14)
+write.csv(pairwise.t.test_NEA_ancestry_admixfrog_res,paste0(folder_path_Sup_Tables,"Pairwise_t_test_for_Prop_NEA_ancestry_admixfrog.csv"),quote = F,row.names = T)
+
+pairwise.t.test_NEA_ancestry_f4_AA_res <- Reshape_pairwise.t.test_PopClust_fn(pairwise.t.test(Joint_Meta$estimate_all_f4r_NEA,Joint_Meta$clusterF3D_broad),n_row = 14)
+write.csv(pairwise.t.test_NEA_ancestry_f4_AA_res,paste0(folder_path_Sup_Tables,"Pairwise_t_test_for_Prop_NEA_ancestry_f4_AA.csv"),quote = F,row.names = T)
+
+pairwise.t.test_NEA_ancestry_f4_1240k_res <- Reshape_pairwise.t.test_PopClust_fn(pairwise.t.test(Joint_Meta$estimate_all_f4r_NEA_1240k,Joint_Meta$clusterF3D_broad),n_row = 14)
+write.csv(pairwise.t.test_NEA_ancestry_f4_1240k_res,paste0(folder_path_Sup_Tables,"Pairwise_t_test_for_Prop_NEA_ancestry_f4_1240k.csv"),quote = F,row.names = T)
+
+```
+
+
+## Check Array Coverage
+
+```{r message=FALSE, echo=F, warning=FALSE, results = 'hide'}
+### Check the coverage of the archaic admixture plus X array across the genome ###
+FACET_THEME = theme(panel.background = element_rect(color='#eeeeee'),
+                    strip.background = element_rect(size = .3),
+                    panel.spacing.y = unit(.2, "lines"))
+
+THEME = theme_classic() + FACET_THEME
+chrom_order <- c("1", "2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" , "X" )
+chrom_limits = read_csv("~/EMH_Introgression_Project/Introgression_Detection/ref/chrom_limits.csv") 
+
+AA_X_bed <- read.table("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/archaicadmixtureAPUX.bed")
+colnames(AA_X_bed) <- c("chrom","start","stop","ref","alt")  
+
+
+P_AA_X <- AA_X_bed %>% mutate(start = start / 1e6, stop = stop / 1e6) %>%
+  ggplot() +
+  geom_rect(data=chrom_limits, color=NA, mapping=aes(xmin=0, xmax=pos_max/1e6, ymin=-Inf, ymax=Inf), fill='lightgrey') + 
+  geom_tile(aes(x =(start + stop)/2, width = 1,
+                y=1, height=1),fill="darkred",alpha=0.008) +
+  facet_wrap(~ordered(as.factor(chrom), levels = chrom_order), ncol=1, strip='left') +
+  scale_y_discrete(expand=c(0,0)) +
+  THEME +
+  theme(strip.text.y = element_text(angle=180)) +
+  xlab("Position in Mb") +
+  ylab("")
+
+ggsave(paste(folder_path,"Supplement/P_AA_APX_coverage.png",sep=""),P_AA_X,width = 12,height = 8)
+
+
+
+
+
+```
+
+## Callability filters
+
+
+### AA + APUX
+
+```{r eval=F,message=FALSE, echo=F, warning=FALSE, results = 'hide'}
+chrom_limits = read_csv("~/EMH_Introgression_Project/Introgression_Detection/ref/chrom_limits.csv") 
+
+chrom_ = "1"
+#window_size = 50000
+window_size = 20000
+chrom_limits_x = chrom_limits %>% filter(chrom == chrom_)
+AA_mask <- data.frame(chrom = chrom_,pos=seq(from = chrom_limits_x$pos0_min,to = chrom_limits_x$pos_max,by = window_size))  
+AA_mask <- AA_mask %>% mutate(pos_end = ifelse(is.na(dplyr::lead(pos)),pos+window_size,dplyr::lead(pos)))
+
+chrom_ <- c("2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" , "X" )
+for(chr in chrom_){
+  chrom_limits_x = chrom_limits %>% filter(chrom == chr)
+  AA_mask_x <- data.frame(chrom = chr,pos=seq(from = chrom_limits_x$pos0_min,to = chrom_limits_x$pos_max,by = window_size))
+  AA_mask_x <- AA_mask_x %>% mutate(pos_end = ifelse(is.na(dplyr::lead(pos)),pos+window_size,dplyr::lead(pos)))
+  AA_mask <- rbind(AA_mask,AA_mask_x)
+}
+  
+
+
+write.table(AA_mask,paste("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp.bed",sep=""),quote = F,row.names = F,col.names = F,sep = "\t")
+
+system(paste0("bedtools intersect -a ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp.bed -b ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/archaicadmixtureAPUX.bed -c -f 1E-9 > /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicAdmixtureAPUX_sample_dens_windows",window_size,".txt"))
+
+
+coverage_masker = read.table(paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicAdmixtureAPUX_sample_dens_windows",window_size,".txt"),col.names = c("chrom","start","end","n_SNP"))
+
+covered_regions <- coverage_masker %>% filter(n_SNP > 0) %>% merge_consecutive_bins_fn(.) %>% 
+  mutate(chrom = ifelse(chrom == "X",23,chrom)) %>% 
+  mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,region_start,region_end) %>% distinct(chrom,region_start,region_end, .keep_all = TRUE)
+
+
+write.table(data.frame(chrom=covered_regions$chrom,start=covered_regions$region_start,end=covered_regions$region_end),
+                       file =paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AAAPUX_callable_regions_joint_windows",window_size,".bed"),quote = F,row.names = F,col.names = F,sep = '\t')
+
+non_covered_regions <- coverage_masker %>% filter(n_SNP == 0) %>% merge_consecutive_bins_fn(.) %>% 
+  mutate(chrom = ifelse(chrom == "X",23,chrom)) %>% 
+  mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,region_start,region_end) %>% distinct(chrom,region_start,region_end, .keep_all = TRUE)
+
+write.table(data.frame(chrom=non_covered_regions$chrom,start=non_covered_regions$region_start,end=non_covered_regions$region_end),
+                       file =paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AAAPUX_Mask_joint_windows",window_size,".bed"),quote = F,row.names = F,col.names = F,sep = '\t')
+
+```
+
+
+```{r eval=F,message=FALSE, echo=F, warning=FALSE, results = 'hide'}
+## shared map
+ref_AA_Shared_Map <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/Shared_Map/archaicadmixtureAPUX_admixfrog_bins_ref.bin.xz") %>% group_by(chrom) %>% mutate(pos_end = lead(pos)) %>% ungroup() %>% 
+  mutate(pos_end = ifelse(is.na(pos_end),pos + 5000,pos_end))
+
+write.table(data.frame(ref_AA_Shared_Map$chrom,ref_AA_Shared_Map$pos , ref_AA_Shared_Map$pos_end,ref_AA_Shared_Map$map,ref_AA_Shared_Map$id),file = "~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/Shared_Map/archaicadmixtureAPUX_admixfrog_bins_ref.bed",quote = F,row.names = F,col.names = F,sep = "\t")
+
+
+system("bedtools intersect -a ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/Shared_Map/archaicadmixtureAPUX_admixfrog_bins_ref.bed -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AAAPUX_Mask_joint_windows20000.bed -wao > ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/Shared_Map/archaicadmixtureAPUX_admixfrog_bins_ref_noncallable_intersect.bed")
+
+non_callable_bins_bed <- read.table("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/Shared_Map/archaicadmixtureAPUX_admixfrog_bins_ref_noncallable_intersect.bed")
+
+non_callable_bins_res <- non_callable_bins_bed %>% filter(V9 != 0) %>% filter((V3-V2) == V9) %>% dplyr::select(V1,V4,V2,V5) %>% distinct(V1,V2,.keep_all = T)
+
+non_callable_bins <- write.csv(data.frame(chrom = non_callable_bins_res$V1,map = non_callable_bins_res$V4,pos = non_callable_bins_res$V2,id = non_callable_bins_res$V5),"/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/Shared_Map/archaicadmixtureAPUX_admixfrog_bins_ref_non_callable_bins.csv") 
+
+## AA map
+ref_AA_AA_Map <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/AA_Map/archaicadmixtureAPUX_admixfrog_bins_ref.bin.xz") %>% group_by(chrom) %>% mutate(pos_end = lead(pos)) %>% ungroup() %>% 
+  mutate(pos_end = ifelse(is.na(pos_end),pos + 5000,pos_end))
+
+write.table(data.frame(ref_AA_AA_Map$chrom,ref_AA_AA_Map$pos , ref_AA_AA_Map$pos_end,ref_AA_AA_Map$map,ref_AA_AA_Map$id),file = "~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/AA_Map/archaicadmixtureAPUX_admixfrog_bins_ref.bed",quote = F,row.names = F,col.names = F,sep = "\t")
+
+
+system("bedtools intersect -a ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/AA_Map/archaicadmixtureAPUX_admixfrog_bins_ref.bed -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AAAPUX_Mask_joint_windows20000.bed -wao > ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/AA_Map/archaicadmixtureAPUX_admixfrog_bins_ref_noncallable_intersect.bed")
+
+non_callable_bins_bed <- read.table("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/AA_Map/archaicadmixtureAPUX_admixfrog_bins_ref_noncallable_intersect.bed")
+
+non_callable_bins_res <- non_callable_bins_bed %>% filter(V9 != 0) %>% filter((V3-V2) == V9) %>% dplyr::select(V1,V4,V2,V5) %>% distinct(V1,V2,.keep_all = T)
+
+non_callable_bins <- write.csv(data.frame(chrom = non_callable_bins_res$V1,map = non_callable_bins_res$V4,pos = non_callable_bins_res$V2,id = non_callable_bins_res$V5),"/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/AA_Map/archaicadmixtureAPUX_admixfrog_bins_ref_non_callable_bins.csv") 
+
+```
+
+```{r eval=F,message=FALSE, echo=F, warning=FALSE, results = 'hide'}
+
+## AA map
+ref_AA_AA_Map <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/AA_Map/ArchaicPlusUnfiltered_admixfrog_bins_ref.bin.xz") %>% group_by(chrom) %>% mutate(pos_end = lead(pos)) %>% ungroup() %>% 
+  mutate(pos_end = ifelse(is.na(pos_end),pos + 5000,pos_end))
+
+write.table(data.frame(ref_AA_AA_Map$chrom,ref_AA_AA_Map$pos , ref_AA_AA_Map$pos_end,ref_AA_AA_Map$map,ref_AA_AA_Map$id),file = "~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/AA_Map/ArchaicPlusUnfiltered_admixfrog_bins_ref.bed",quote = F,row.names = F,col.names = F,sep = "\t")
+
+
+system("bedtools intersect -a ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/AA_Map/ArchaicPlusUnfiltered_admixfrog_bins_ref.bed -b /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicPlusUnfiltered_Mask_joint_windows20000.bed -wao > ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/AA_Map/ArchaicPlusUnfiltered_admixfrog_bins_ref_noncallable_intersect.bed")
+
+non_callable_bins_bed <- read.table("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/AA_Map/ArchaicPlusUnfiltered_admixfrog_bins_ref_noncallable_intersect.bed")
+
+non_callable_bins_res <- non_callable_bins_bed %>% filter(V9 != 0) %>% filter((V3-V2) == V9) %>% dplyr::select(V1,V4,V2,V5) %>% distinct(V1,V2,.keep_all = T)
+
+non_callable_bins <- write.csv(data.frame(chrom = non_callable_bins_res$V1,map = non_callable_bins_res$V4,pos = non_callable_bins_res$V2,id = non_callable_bins_res$V5),"/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/bin_ref/AA_Map/ArchaicPlusUnfiltered_admixfrog_bins_ref_non_callable_bins.csv") 
+
+```
+
+### AP unfiltred
+
+```{r eval=F,message=FALSE, echo=F, warning=FALSE, results = 'hide'}
+chrom_limits = read_csv("~/EMH_Introgression_Project/Introgression_Detection/ref/chrom_limits.csv") 
+
+chrom_ = "1"
+window_size = 50000
+#window_size = 20000
+chrom_limits_x = chrom_limits %>% filter(chrom == chrom_)
+APU_mask <- data.frame(chrom = chrom_,pos=seq(from = chrom_limits_x$pos0_min,to = chrom_limits_x$pos_max,by = window_size))  
+APU_mask <- APU_mask %>% mutate(pos_end = ifelse(is.na(dplyr::lead(pos)),pos+window_size,dplyr::lead(pos)))
+
+chrom_ <- c("2" , "3" , "4",  "5" , "6"  ,"7" , "8" , "9" , "10" ,"11", "12" ,"13","14" ,"15", "16" ,"17" ,"18", "19" , "20" ,"21", "22" , "X" )
+for(chr in chrom_){
+  chrom_limits_x = chrom_limits %>% filter(chrom == chr)
+  APU_mask_x <- data.frame(chrom = chr,pos=seq(from = chrom_limits_x$pos0_min,to = chrom_limits_x$pos_max,by = window_size))
+  APU_mask_x <- APU_mask_x %>% mutate(pos_end = ifelse(is.na(dplyr::lead(pos)),pos+window_size,dplyr::lead(pos)))
+  APU_mask <- rbind(APU_mask,APU_mask_x)
+}
+  
+
+
+write.table(APU_mask,paste("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp.bed",sep=""),quote = F,row.names = F,col.names = F,sep = "\t")
+
+system(paste0("bedtools intersect -a ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/Genome_in_windows",window_size,"bp.bed -b ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/ArchaicPlusUnfiltered.bed -c -f 1E-9 > /home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicPlusUnfiltered_sample_dens_windows",window_size,".txt"))
+
+
+coverage_masker = read.table(paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicPlusUnfiltered_sample_dens_windows",window_size,".txt"),col.names = c("chrom","start","end","n_SNP"))
+
+covered_regions <- coverage_masker %>% filter(n_SNP > 0) %>% merge_consecutive_bins_fn(.) %>% 
+  mutate(chrom = ifelse(chrom == "X",23,chrom)) %>% 
+  mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,region_start,region_end) %>% distinct(chrom,region_start,region_end, .keep_all = TRUE)
+
+
+write.table(data.frame(chrom=covered_regions$chrom,start=covered_regions$region_start,end=covered_regions$region_end),
+                       file =paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicPlusUnfiltered_callable_regions_joint_windows",window_size,".bed"),quote = F,row.names = F,col.names = F,sep = '\t')
+
+non_covered_regions <- coverage_masker %>% filter(n_SNP == 0) %>% merge_consecutive_bins_fn(.) %>% 
+  mutate(chrom = ifelse(chrom == "X",23,chrom)) %>% 
+  mutate_at(c('chrom'), as.numeric) %>% arrange(.,chrom,region_start,region_end) %>% distinct(chrom,region_start,region_end, .keep_all = TRUE)
+
+write.table(data.frame(chrom=non_covered_regions$chrom,start=non_covered_regions$region_start,end=non_covered_regions$region_end),
+                       file =paste0("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/ArchaicPlusUnfiltered_Mask_joint_windows",window_size,".bed"),quote = F,row.names = F,col.names = F,sep = '\t')
+
+```
+
+# Check ts/tv ratio
+
+
+
+```{r warning=FALSE,message=FALSE,echo=F}
+
+
+AA_X_bed %>% filter(ref == "C" & alt == "T" | ref == "T" & alt == "C" | ref == "G" & alt == "A" | ref == "A" & alt == "G") -> all_ts_AA
+
+AA_X_bed %>% filter(ref == "C" & alt == "A" | ref == "A" & alt == "C" | ref == "G" & alt == "T" | ref == "T" & alt == "G" | ref == "A" & alt == "T" | ref == "T" & alt == "A" | ref == "C" & alt == "G" | ref == "G" & alt == "C") -> all_tv_AA
+
+length(AA_X_bed[,1]) - (length(all_ts_AA[,1]) + length(all_tv_AA[,1]))
+
+AA_X_ts_tv_ratio=length(all_ts_AA[,1])/length(all_tv_AA[,1])
+
+
+```
+
+The transition transversion ratio in the archaic admixture array is `r AA_X_ts_tv_ratio`.
+
+
+# Check caputer in coding region
+
+```{bash, eval=F, echo=F}
+awk 'NR>5 {print $1, $2, $3, $4, $5 }' /mnt/sequencedb/Annotations/hg19/gencode.v38lift37.annotation.gtf > /home/leonardo_iasi/EMH_Introgression_Project/GenCode.red_annotate.txt
+```
+
+```{r warning=FALSE,message=FALSE,echo=F}
+GenCode <- read.table("~/EMH_Introgression_Project/GenCode.red_annotate.txt")
+colnames(GenCode) <- c("chr","data_base","annotation","start","stop")
+GenCode %>% filter(data_base == "ENSEMBL" & annotation=="exon") %>% write.table(.,paste(folder_path,"/GenCode.no_annotations.txt",sep=""),quote = F,row.names = F,col.names = F)
+```
+
+```{bash, eval=F, echo=F}
+cat /home/leonardo_iasi/EMH_Introgression_Project/GenCode.no_annotations.txt | awk '{print $1, $4, $5}' | cut -c 4- | sed 's/ /\t/g' |
+bedtools intersect -a stdin -b ~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/archaicadmixtureAPUX.bed > ~/EMH_Introgression_Project/GenCode_AA_APUX_intersect.bed
+```
+
+```{r warning=FALSE,message=FALSE,echo=F}
+GenCode_AA_intersect <- read.table("~/EMH_Introgression_Project/GenCode_AA_APUX_intersect.bed")
+GenCode_AA_intersect <- GenCode_AA_intersect[!duplicated(GenCode_AA_intersect),]
+
+GenCode %>% filter(chr!="chrM" & data_base == "ENSEMBL" & annotation=="exon") %>%
+summarise(sum(stop - start)/(3088286401 - (57227415)	)) -> prop_coding_normal
+Archaic_Admixture_array = read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/bed/archaicadmixtureAPUX.bed")
+prop_coding_AA <- length(GenCode_AA_intersect[,1])/length(Archaic_Admixture_array[,1])
+```
+
+We are using the GenCode annotations to check for the amount of SNPs in our capture arrays targeting exonic regions. We sub-sample the annotation file to all autosomes, only exons annotated in ENSEMBL. The proportion of exons using this filter is `r prop_coding_normal`. We intersect the genomic positions of the found exons with the bed files of the capture arrays. The proportions of sites in exonic regions in the archaic admixture array  is `r prop_coding_AA`.
+
+
+```{r warning=FALSE,message=FALSE,echo=F}
+
+A1240k <- read.table("~/EMH_Introgression_Project/Introgression_Detection/ref/bed/A1240k.bed")
+A1240k %>% filter(V1 == "X") %>% summarise(n())
+A1240k %>% filter(V1 == "X") %>% summarise(n()/1233632)
+
+A1000k <- read.table("/home/public/AncientDNA/probe_designs/AA77-81_bigYoruba/big_yoruba_and_altai_filtN_printedSNPs.bed")
+A1000k %>% filter(V1 == "X") %>% summarise(n())
+A1000k %>% filter(V1 == "X") %>% summarise(n()/997780)
+
+```
+
+
+### Check matching of ascertainments
+
+```{r warning=FALSE,message=FALSE,echo=F}
+AAX_ref <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_archaicadmixtureAPUX_hs37mMask35to99.csv.xz")
+
+AAX_ref_sum <- AAX_ref  %>% summarize(chrom = chrom, pos = pos,
+                                 AFR = AFR_alt / (AFR_ref + AFR_alt),
+                                 DEN = DEN_alt / (DEN_ref + DEN_alt),
+                                 NEA = NEA_alt / (NEA_ref + NEA_alt),
+                                 PAN = PAN_alt) %>% drop_na()
+
+
+NEA_sites_AAX <- AAX_ref_sum %>% filter(NEA >= 0.5 & AFR < 0.1 | NEA == 0 & AFR > 0.9 | NEA > 0 & AFR == 0)
+DEN_sites_AAX <- AAX_ref_sum %>% filter(DEN >=  0.5 & AFR < 0.1 | DEN == 0 & AFR > 0.9 | DEN > 0 & AFR == 0)
+
+Shared_NEA_DEN_AAX <- inner_join(NEA_sites_AAX,DEN_sites_AAX[,c("chrom","pos")],by=c("chrom","pos")) %>% 
+  mutate(ancestral = ifelse(NEA == PAN,1,0),derived = ifelse(NEA != PAN,1,0)) %>%
+  summarize(Shared_ancestral = sum(ancestral),Shared_derived = sum(derived))
+Only_NEA_AAX <- anti_join(NEA_sites_AAX,DEN_sites_AAX,by=c("chrom","pos")) %>% 
+  mutate(ancestral = ifelse(NEA == PAN,1,0),derived = ifelse(NEA != PAN,1,0)) %>%
+  summarize(NEA_ancestral = sum(ancestral),NEA_derived = sum(derived))
+Only_DEN_AAX <- anti_join(DEN_sites_AAX,NEA_sites_AAX,by=c("chrom","pos")) %>% 
+  mutate(ancestral = ifelse(DEN == PAN,1,0),derived = ifelse(DEN != PAN,1,0)) %>%
+  summarize(DEN_ancestral = sum(ancestral),DEN_derived = sum(derived))
+
+AAX_summary <- data.frame(Sites = c("Shared between archaics", "Neandertal only", "Deniosvan only"), 
+                          Ancestral = c(Shared_NEA_DEN_AAX$Shared_ancestral,Only_NEA_AAX$NEA_ancestral,Only_DEN_AAX$DEN_ancestral),
+                          Derived = c(Shared_NEA_DEN_AAX$Shared_derived,Only_NEA_AAX$NEA_derived,Only_DEN_AAX$DEN_derived)) %>%
+  mutate(prop_anc = Ancestral/length(AAX_ref_sum$pos),
+         prop_der = Derived/length(AAX_ref_sum$pos)) %>% mutate(Ascertainment = "Archaic Admixture + X")
+
+
+A1240k_ref <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_A1240k_hs37mMask35to99.csv.xz")
+
+A1240k_ref_sum <- A1240k_ref  %>% summarize(chrom = chrom, pos = pos,
+                                 AFR = AFR_alt / (AFR_ref + AFR_alt),
+                                 DEN = DEN_alt / (DEN_ref + DEN_alt),
+                                 NEA = NEA_alt / (NEA_ref + NEA_alt),
+                                 PAN = PAN_alt) %>% drop_na()
+
+NEA_sites_A1240k <- A1240k_ref_sum %>% filter(NEA >= 0.5 & AFR < 0.1 | NEA == 0 & AFR > 0.9 | NEA > 0 & AFR == 0)
+DEN_sites_A1240k <- A1240k_ref_sum %>% filter(DEN >=  0.5 & AFR < 0.1 | DEN == 0 & AFR > 0.9 | DEN > 0 & AFR == 0)
+
+Shared_NEA_DEN_A1240k <- inner_join(NEA_sites_A1240k,DEN_sites_A1240k[,c("chrom","pos")],by=c("chrom","pos")) %>% 
+  mutate(ancestral = ifelse(NEA == PAN,1,0),derived = ifelse(NEA != PAN,1,0)) %>%
+  summarize(Shared_ancestral = sum(ancestral),Shared_derived = sum(derived))
+Only_NEA_A1240k <- anti_join(NEA_sites_A1240k,DEN_sites_A1240k,by=c("chrom","pos")) %>% 
+  mutate(ancestral = ifelse(NEA == PAN,1,0),derived = ifelse(NEA != PAN,1,0)) %>%
+  summarize(NEA_ancestral = sum(ancestral),NEA_derived = sum(derived))
+Only_DEN_A1240k <- anti_join(DEN_sites_A1240k,NEA_sites_A1240k,by=c("chrom","pos")) %>% 
+  mutate(ancestral = ifelse(DEN == PAN,1,0),derived = ifelse(DEN != PAN,1,0)) %>%
+  summarize(DEN_ancestral = sum(ancestral),DEN_derived = sum(derived))
+
+A1240k_summary <- data.frame(Sites = c("Shared between archaics", "Neandertal only", "Deniosvan only"), 
+                          Ancestral = c(Shared_NEA_DEN_A1240k$Shared_ancestral,Only_NEA_A1240k$NEA_ancestral,Only_DEN_A1240k$DEN_ancestral),
+                          Derived = c(Shared_NEA_DEN_A1240k$Shared_derived,Only_NEA_A1240k$NEA_derived,Only_DEN_A1240k$DEN_derived)) %>%
+  mutate(prop_anc = Ancestral/length(A1240k_ref$pos),
+         prop_der = Derived/length(A1240k_ref$pos)) %>% mutate(Ascertainment = "1240k")
+
+DiagSites_ref <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_DiagnosticSites_hs37mMask35to99.csv.xz")
+
+DiagSites_ref_sum <- DiagSites_ref  %>% summarize(chrom = chrom, pos = pos,
+                                 AFR = AFR_alt / (AFR_ref + AFR_alt),
+                                 DEN = DEN_alt / (DEN_ref + DEN_alt),
+                                 NEA = NEA_alt / (NEA_ref + NEA_alt),
+                                 PAN = PAN_alt) %>% drop_na()
+
+NEA_sites_DiagSites <- DiagSites_ref_sum %>% filter(NEA >= 0.5 & AFR < 0.1 | NEA == 0 & AFR > 0.9 | NEA > 0 & AFR == 0)
+DEN_sites_DiagSites <- DiagSites_ref_sum %>% filter(DEN >=  0.5 & AFR < 0.1 | DEN == 0 & AFR > 0.9 | DEN > 0 & AFR == 0)
+
+xx <- anti_join(DiagSites_ref_sum,NEA_sites_DiagSites,by=c("chrom","pos")) %>% anti_join(.,DEN_sites_DiagSites,by=c("chrom","pos"))
+
+Shared_NEA_DEN_DiagSites <- inner_join(NEA_sites_DiagSites,DEN_sites_DiagSites[,c("chrom","pos")],by=c("chrom","pos")) %>% 
+  mutate(ancestral = ifelse(NEA == PAN,1,0),derived = ifelse(NEA != PAN,1,0)) %>%
+  summarize(Shared_ancestral = sum(ancestral),Shared_derived = sum(derived))
+Only_NEA_DiagSites <- anti_join(NEA_sites_DiagSites,DEN_sites_DiagSites,by=c("chrom","pos")) %>% 
+  mutate(ancestral = ifelse(NEA == PAN,1,0),derived = ifelse(NEA != PAN,1,0)) %>%
+  summarize(NEA_ancestral = sum(ancestral),NEA_derived = sum(derived))
+Only_DEN_DiagSites <- anti_join(DEN_sites_DiagSites,NEA_sites_DiagSites,by=c("chrom","pos")) %>% 
+  mutate(ancestral = ifelse(DEN == PAN,1,0),derived = ifelse(DEN != PAN,1,0)) %>%
+  summarize(DEN_ancestral = sum(ancestral),DEN_derived = sum(derived))
+
+DiagSites_summary <- data.frame(Sites = c("Shared between archaics", "Neandertal only", "Deniosvan only"), 
+                          Ancestral = c(Shared_NEA_DEN_DiagSites$Shared_ancestral,Only_NEA_DiagSites$NEA_ancestral,Only_DEN_DiagSites$DEN_ancestral),
+                          Derived = c(Shared_NEA_DEN_DiagSites$Shared_derived,Only_NEA_DiagSites$NEA_derived,Only_DEN_DiagSites$DEN_derived)) %>%
+  mutate(prop_anc = Ancestral/length(DiagSites_ref_sum$pos),
+         prop_der = Derived/length(DiagSites_ref_sum$pos)) %>% mutate(Ascertainment = "AllDiagnosticSites")
+
+EA_ref <- read.csv("~/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/ref_ArchaicPlusUnfiltered_hs37mMask35to99.csv.xz")
+
+EA_ref_sum <- EA_ref  %>% summarize(chrom = chrom, pos = pos,
+                                 AFR = AFR_alt / (AFR_ref + AFR_alt),
+                                 DEN = DEN_alt / (DEN_ref + DEN_alt),
+                                 NEA = NEA_alt / (NEA_ref + NEA_alt),
+                                 PAN = PAN_alt) %>% drop_na()
+
+
+NEA_sites_EA <- EA_ref_sum %>% filter(NEA >= 0.5 & AFR < 0.1 | NEA == 0 & AFR > 0.9 | NEA > 0 & AFR == 0)
+DEN_sites_EA <- EA_ref_sum %>% filter(DEN >=  0.5 & AFR < 0.1 | DEN == 0 & AFR > 0.9 | DEN > 0 & AFR == 0)
+
+Shared_NEA_DEN_EA <- inner_join(NEA_sites_EA,DEN_sites_EA[,c("chrom","pos")],by=c("chrom","pos")) %>% 
+  mutate(ancestral = ifelse(NEA == PAN,1,0),derived = ifelse(NEA != PAN,1,0)) %>%
+  summarize(Shared_ancestral = sum(ancestral),Shared_derived = sum(derived))
+Only_NEA_EA <- anti_join(NEA_sites_EA,DEN_sites_EA,by=c("chrom","pos")) %>% 
+  mutate(ancestral = ifelse(NEA == PAN,1,0),derived = ifelse(NEA != PAN,1,0)) %>%
+  summarize(NEA_ancestral = sum(ancestral),NEA_derived = sum(derived))
+Only_DEN_EA <- anti_join(DEN_sites_EA,NEA_sites_EA,by=c("chrom","pos")) %>% 
+  mutate(ancestral = ifelse(DEN == PAN,1,0),derived = ifelse(DEN != PAN,1,0)) %>%
+  summarize(DEN_ancestral = sum(ancestral),DEN_derived = sum(derived))
+
+EA_summary <- data.frame(Sites = c("Shared between archaics", "Neandertal only", "Deniosvan only"), 
+                          Ancestral = c(Shared_NEA_DEN_EA$Shared_ancestral,Only_NEA_EA$NEA_ancestral,Only_DEN_EA$DEN_ancestral),
+                          Derived = c(Shared_NEA_DEN_EA$Shared_derived,Only_NEA_EA$NEA_derived,Only_DEN_EA$DEN_derived)) %>%
+  mutate(prop_anc = Ancestral/length(EA_ref_sum$pos),
+         prop_der = Derived/length(EA_ref_sum$pos)) %>% mutate(Ascertainment = "Extended Archaic")
+
+
+Joint_ref_table <- rbind(AAX_summary,A1240k_summary,DiagSites_summary,EA_summary)
+
+write.csv(Joint_ref_table,paste0(folder_path_Sup_Tables,"Ascertainment_matching_tables.csv"),quote = F,row.names = T)
+```
+
