@@ -230,13 +230,14 @@ for(i in 1:length(est_method)){
     sample_n(n_rep,replace = T) 
   
   Diff_ancient <- data.frame(diff = EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "AncientEAS"] - EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "preLGM\nWEurHG"],
-                             pop = "AncientEAS vs preLGM-WEurHG",method = est_method[i],AncientEASsample = EAS_vs_EURO_random$sample_name[EAS_vs_EURO_random$cluster_ordered == "AncientEAS"])
+                             pop = "AncientEAS vs preLGM-WEurHG",method = est_method[i],AncientEASsample = EAS_vs_EURO_random$sample_name[EAS_vs_EURO_random$cluster_ordered == "AncientEAS"],
+                             AncientWEursample = EAS_vs_EURO_random$sample_name[EAS_vs_EURO_random$cluster_ordered == "preLGM\nWEurHG"])
   
   Diff_present_SGDP <- data.frame(diff = EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "EAS (SGDP)"] - EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "WEur (SGDP)"],
-                                  pop = "EAS vs WEur (SGDP)",method = est_method[i],AncientEASsample = "other" )
+                                  pop = "EAS vs WEur (SGDP)",method = est_method[i],AncientEASsample = "other",AncientWEursample = "other" )
   
   Diff_present_1kG <- data.frame(diff = EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "EAS (1kG)"] - EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "WEur (1kG)"],
-                                 pop = "EAS vs WEur (1kG)",method = est_method[i],AncientEASsample = "other" )
+                                 pop = "EAS vs WEur (1kG)",method = est_method[i],AncientEASsample = "other",AncientWEursample = "other" )
   
   Diff_list[[i]] <- rbind(Diff_ancient,Diff_present_SGDP,Diff_present_1kG)
   
@@ -258,24 +259,49 @@ P_random_pairwise_diff_present_vs_ancient_EUR_EAS <-
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
   ggtitle("Pairwise")
 
+Diff_prop_distinct <- Diff_prop %>% distinct()
+
+P_random_pairwise_diff_present_vs_ancient_EUR_EAS_distinct <- 
+  ggplot(data = Diff_prop_distinct,aes(x=pop,y=diff,col=pop,shape=AncientEASsample)) +
+  facet_grid(~method) +
+  geom_jitter() +
+  xlab("") +
+  ylab("More Neandertal ancestry in\n WEur <-> EAS") +
+  geom_hline(yintercept = 0) +
+  THEME +
+  theme(legend.position = "none") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  ggtitle("Pairwise")
+
 
 ### difference between mean of two randomly sampled EAS and EUR 
 
 est_method = c("estimate_all_f4r_NEA","estimate_all_admixfrog_NEA")
-n_rep = 500
 Prop_est_sample_list <- list()
 Diff_mean_list <- list()
 for(i in 1:length(est_method)){
   
   EAS_vs_EURO_random <- EAS_vs_EURO %>% filter(method == !!est_method[i]) 
   
-  Diff_ancient <- data.frame(diff = replicate(n= n_rep,mean(sample(EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "AncientEAS"],size = 2,replace = T))) - replicate(n= n_rep,mean(sample(EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "preLGM\nWEurHG"],size = 2,replace = T))),
+  sample_x = t(replicate(n= 10000,sample(EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "AncientEAS"],size = 2,replace = T)))
+  sample_y = t(replicate(n= 10000,sample(EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "preLGM\nWEurHG"],size = 2,replace = T)))
+  sample_set = as.data.frame(cbind(sample_x,sample_y)) %>% distinct()
+  
+  Diff_ancient <- data.frame(diff = (rowMeans(sample_set[,1:2]) - rowMeans(sample_set[,3:4])),
                              pop = "AncientEAS vs preLGM-WEurHG",method = est_method[i],AncientEASsample = "other")
   
-  Diff_present_SGDP <- data.frame(diff = replicate(n= n_rep,mean(sample(EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "EAS (SGDP)"],size = 2,replace = T))) - replicate(n= n_rep,mean(sample(EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "WEur (SGDP)"],size = 2,replace = T))),
+  sample_x = t(replicate(n= 500,sample(EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "EAS (SGDP)"],size = 2,replace = T)))
+  sample_y = t(replicate(n= 500,sample(EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "WEur (SGDP)"],size = 2,replace = T)))
+  sample_set = as.data.frame(cbind(sample_x,sample_y)) %>% distinct()
+  
+  Diff_present_SGDP <- data.frame(diff = (rowMeans(sample_set[,1:2]) - rowMeans(sample_set[,3:4])),
                                   pop = "EAS vs WEur (SGDP)",method = est_method[i],AncientEASsample = "other" )
   
-  Diff_present_1kG <- data.frame(diff = replicate(n= n_rep,mean(sample(EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "EAS (1kG)"],size = 2,replace = T))) - replicate(n= n_rep,mean(sample(EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "WEur (1kG)"],size = 2,replace = T))),
+  sample_x = t(replicate(n= 500,sample(EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "EAS (1kG)"],size = 2,replace = T)))
+  sample_y = t(replicate(n= 500,sample(EAS_vs_EURO_random$est[EAS_vs_EURO_random$cluster_ordered == "WEur (1kG)"],size = 2,replace = T)))
+  sample_set = as.data.frame(cbind(sample_x,sample_y)) %>% distinct()
+  
+  Diff_present_1kG <- data.frame(diff = (rowMeans(sample_set[,1:2]) - rowMeans(sample_set[,3:4])),
                                  pop = "EAS vs WEur (1kG)",method = est_method[i],AncientEASsample = "other")
   
   Diff_mean_list[[i]] <- rbind(Diff_ancient,Diff_present_SGDP,Diff_present_1kG)
@@ -296,11 +322,11 @@ P_random_mean_diff_present_vs_ancient_EUR_EAS <-
   theme(legend.position = "none") + 
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
   ggtitle("Mean of two individuals")
+P_random_mean_diff_present_vs_ancient_EUR_EAS
 
-P_random_mean_present_vs_ancient_EUR_EAS <- ggpubr::ggarrange(P_random_pairwise_diff_present_vs_ancient_EUR_EAS,
+P_random_mean_present_vs_ancient_EUR_EAS <- ggpubr::ggarrange(P_random_pairwise_diff_present_vs_ancient_EUR_EAS_distinct,
                                                               P_random_mean_diff_present_vs_ancient_EUR_EAS,ncol = 2)
 
-ggsave(paste0(folder_path_save,"P_random_diff_present_vs_ancient_EUR_EAS.png"),P_random_mean_present_vs_ancient_EUR_EAS,device = "png",width = 12,height = 5)
 
 ```
 

@@ -122,7 +122,7 @@ All_rle_annotated_sum <- All_rle_annotated %>% filter(target == "NEA",x_chrom_ca
   group_by(sample,chrom,Sex,ML_BP_Mean,time_slice) %>%
   dplyr::summarize(total_NEA_ancestry_bp = sum(pos_end - pos)) %>% inner_join(.,callable_genome,by="chrom") %>% 
   mutate(Sex = ifelse(Sex == "M" ,"male",ifelse(Sex == "F","female",Sex))) %>%
-  #mutate(total_NEA_ancestry_bp = ifelse(Sex == "M" | Sex == "male",total_NEA_ancestry_bp*2,total_NEA_ancestry_bp)) %>%
+  mutate(total_NEA_ancestry_bp = ifelse(Sex == "male" & chrom == 23,total_NEA_ancestry_bp*2,total_NEA_ancestry_bp)) %>%
   mutate(percent_NEA = total_NEA_ancestry_bp/callable_bp) %>%
   mutate_at(c('chrom'), as.character) %>% mutate(chrom = ifelse(chrom == "23","X",chrom))
 
@@ -148,7 +148,7 @@ All_rle_annotated_sum_X_by_time <- All_rle_annotated_sum %>%
 
 Amount_NEA_autosomes_X_sum <- inner_join(All_rle_annotated_sum_autosomes,All_rle_annotated_sum_X)
 
-write.csv(All_rle_annotated_sum,paste0(folder_path_data,"All_rle_annotated_sum.csv"),quote = F,row.names = F)
+write.csv(All_rle_annotated_sum,paste0(folder_path_data,"All_rle_annotated_sum_n_chrom_corrected.csv"),quote = F,row.names = F)
 
 ## sharing all together
 
@@ -431,17 +431,19 @@ Sum_autosomes <- All_rle_annotated %>% filter(x_chrom_captured == TRUE,chrom != 
 
 Sum_X <- All_rle_annotated %>% filter(x_chrom_captured == TRUE,chrom == "X") %>% 
   group_by(sample,!!sym(cluster_used),ML_BP_Mean,time_slice,Sex) %>% 
-  dplyr::summarize(total_length_bp_X = sum(pos_len),total_length_cM_X = sum(map_len)) %>% ungroup()
+  dplyr::summarize(total_length_bp_X = sum(pos_len),total_length_cM_X = sum(map_len)) %>% ungroup() %>%
+  mutate(total_length_bp_X = ifelse(Sex == "male",total_length_bp_X * 2, total_length_bp_X),
+         total_length_cM_X = ifelse(Sex == "male",total_length_cM_X * 2, total_length_cM_X))
 
 X_to_autosome_ratio <- inner_join(Sum_autosomes,Sum_X) %>% mutate(ratio_bp = total_length_bp_X / mean_length_bp_autosomes ,
                                                                   ratio_cM = total_length_cM_X / mean_length_cM_autosomes)
 
-write.csv(x = X_to_autosome_ratio,file = paste0(folder_path_data,"X_to_autosome_ratio.csv"),quote = F,row.names = F)
-
+write.csv(x = X_to_autosome_ratio,file = paste0(folder_path_data,"X_to_autosome_ratio_n_chrom_corrected.csv"),quote = F,row.names = F)
 
 # per callable bp
 
-callable_genome <- read.table("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AA_callable_regions_joint_windows20000.bed",col.names = c("chrom","start","end"))  %>% mutate(len = end - start) %>% group_by(chrom) %>% dplyr::summarise(callable = sum(len)) %>% mutate(chrom = ifelse(chrom == 23,"X",chrom)) 
+
+callable_genome <- read.table("/home/leonardo_iasi/EMH_Introgression_Project/Introgression_Detection/admixfrogREF/ref/published/EMHPanel/Shared_Map/Masks/AAAPUX_callable_regions_joint_windows20000.bed",col.names = c("chrom","start","end"))  %>% mutate(len = end - start) %>% group_by(chrom) %>% dplyr::summarise(callable = sum(len)) %>% mutate(chrom = ifelse(chrom == 23,"X",chrom)) 
 
 
 Sum_autosomes_pre_bp <- All_rle_annotated %>% filter(x_chrom_captured == TRUE,chrom != "X") %>% 
@@ -453,11 +455,13 @@ Sum_autosomes_pre_bp <- All_rle_annotated %>% filter(x_chrom_captured == TRUE,ch
 Sum_X_pre_bp <- All_rle_annotated %>% filter(x_chrom_captured == TRUE,chrom == "X") %>% 
   group_by(sample,!!sym(cluster_used),Sex,ML_BP_Mean,time_slice,chrom) %>% 
   dplyr::summarize(Total_sum_NEA_chrX = sum(pos_len)) %>% 
-  ungroup() %>% inner_join(.,callable_genome) %>% mutate(NEA_chrX_pre_bp = Total_sum_NEA_chrX / callable)
+  ungroup() %>%   
+  mutate(Total_sum_NEA_chrX = ifelse(Sex == "male",Total_sum_NEA_chrX * 2, Total_sum_NEA_chrX)) %>% 
+  inner_join(.,callable_genome) %>% mutate(NEA_chrX_pre_bp = Total_sum_NEA_chrX / callable)
 
 X_to_autosome_ratio_pre_bp <- inner_join(Sum_autosomes_pre_bp,Sum_X_pre_bp) %>% mutate(ratio_prop_bp = NEA_chrX_pre_bp / NEA_autosomes_pre_bp)
 
-write.csv(x = X_to_autosome_ratio_pre_bp,file = paste0(folder_path_data,"X_to_autosome_ratio_pre_bp.csv"),quote = F,row.names = F)
+write.csv(x = X_to_autosome_ratio_pre_bp,file = paste0(folder_path_data,"X_to_autosome_ratio_pre_bp_n_chrom_corrected.csv"),quote = F,row.names = F)
 
 ```
 
