@@ -10,7 +10,7 @@ To get the Ancestry Covariance (method based on Moorjani et al. 2016) and singe 
 In the [Dating_Neandertal_ancestry](https://github.com/LeonardoIasi/Neandertal-ancestry-through-time/tree/main/Dating_Neandertal_ancestry) folder you can find the scripts that use the Ancestry Covariance for jointly dating the Neandertal gene flow into modern humans using individuals older than 20 ky. 
 
 ## Calling High Frequency regions
-Scripts to call high frequency regions in ancient and present day moden humans from admixfrog posterior estimates can be found in the [Dating-and_Outlier-Scan](https://github.com/LeonardoIasi/Dating-and-Outlier-Scan/tree/d7c23214e2e9e06a16a6e3f94cdb3416bc76f82f), subfolder Outlier_Scan. 
+Scripts to call high frequency regions in ancient and present day moden humans from admixfrog posterior estimates can be found in the [Dating-and_Outlier-Scan](https://github.com/LeonardoIasi/Dating-and-Outlier-Scan/tree/d7c23214e2e9e06a16a6e3f94cdb3416bc76f82f), subfolder Archaic_Selected_regions. 
 
 ## Analysis
 In the [Analysis](https://github.com/LeonardoIasi/Neandertal-ancestry-through-time/tree/main/Analysis) folder you can find the R markdown scripts that were used for the analysis of the called segments from admixfrog. These files are uploaded with the original code however, they are made to take in the files one can download from the associated Dryad repo to make the rerun of the analysis easier. The QC files are uploaded as is.
